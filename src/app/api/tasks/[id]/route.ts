@@ -2,6 +2,7 @@ import { z } from "zod";
 import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { logActivity } from "@/lib/activity";
 
 const patchSchema = z.object({
@@ -42,8 +43,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       where: { id },
       data,
       include: {
-        assignedTo: true,
-        createdBy: true,
+        assignedTo: { select: userCardSelect },
+        createdBy: { select: userCardSelect },
         prospect: { include: { company: true } },
       },
     });

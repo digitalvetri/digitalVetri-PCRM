@@ -137,7 +137,7 @@ export function OutreachQueue({ drafts }: { drafts: OutreachDraftItem[] }) {
               <Save className="h-4 w-4" /> Save
             </Button>
             {d.channel === "WHATSAPP" ? (
-              <Button type="button" size="sm" onClick={() => send(d)} className="bg-[#25d366] text-white hover:bg-[#1ebe5b]">
+              <Button type="button" size="sm" onClick={() => send(d)} className="bg-[#128C7E] text-white hover:bg-[#0e6f63]">
                 <MessageCircle className="h-4 w-4" /> Send on WhatsApp
               </Button>
             ) : (

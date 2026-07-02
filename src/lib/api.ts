@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { ApiError } from "@/lib/rbac";
 
@@ -28,6 +29,16 @@ export async function withApi<T>(handler: Handler<T>): Promise<NextResponse> {
         { error: "Validation failed", issues: err.issues },
         { status: 400 }
       );
+    }
+    // Map well-known Prisma errors to clean HTTP statuses instead of a generic
+    // 500 (e.g. updating/deleting a stale id, or a unique-constraint clash).
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === "P2025") {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      if (err.code === "P2002") {
+        return NextResponse.json({ error: "That record already exists." }, { status: 409 });
+      }
     }
     // Log the real error server-side, but never leak internal details
     // (Prisma/driver/provider messages) to the client.

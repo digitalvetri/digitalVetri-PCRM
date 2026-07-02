@@ -3,24 +3,25 @@ import type { Prisma } from "@prisma/client";
 import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
+import { enumParam, FOLLOWUP_STATUSES } from "@/lib/query";
+import { parseISTDate, istStartOfDay, istEndOfDay } from "@/lib/time";
+import { recomputeProspectNextFollowUp } from "@/lib/follow-up-sync";
 
 /** Build the Prisma `where` for the follow-up list from query params. */
 function buildFollowUpWhere(sp: URLSearchParams): Prisma.FollowUpWhereInput {
   const where: Prisma.FollowUpWhereInput = {};
 
-  const status = sp.get("status");
+  const status = enumParam(sp.get("status"), FOLLOWUP_STATUSES);
   const userId = sp.get("userId");
   const scope = sp.get("scope");
 
-  if (status) where.status = status as never;
+  if (status) where.status = status;
   if (userId) where.userId = userId;
 
   if (scope) {
-    const now = new Date();
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(now);
-    endOfToday.setHours(23, 59, 59, 999);
+    const startOfToday = istStartOfDay();
+    const endOfToday = istEndOfDay();
 
     // Active statuses only for scope-based views.
     where.status = { in: ["PENDING", "RESCHEDULED"] };
@@ -30,8 +31,7 @@ function buildFollowUpWhere(sp: URLSearchParams): Prisma.FollowUpWhereInput {
     } else if (scope === "overdue") {
       where.dueAt = { lt: startOfToday };
     } else if (scope === "upcoming") {
-      const in7 = new Date(endOfToday);
-      in7.setDate(in7.getDate() + 7);
+      const in7 = new Date(endOfToday.getTime() + 7 * 24 * 60 * 60 * 1000);
       where.dueAt = { gt: endOfToday, lte: in7 };
     }
   }
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       where,
       include: {
         prospect: { include: { company: true } },
-        user: true,
+        user: { select: userCardSelect },
       },
       orderBy: { dueAt: "asc" },
     });
@@ -72,18 +72,26 @@ export async function POST(req: Request) {
     const user = await requireUser("prospects.edit");
     const { prospectId, dueAt, channel, notes } = createSchema.parse(await req.json());
 
+    const due = parseISTDate(dueAt);
+    if (!due) throw new ApiError(400, "Invalid due date.");
+
     const prospect = await prisma.prospect.findUnique({ where: { id: prospectId } });
     if (!prospect) throw new ApiError(404, "Prospect not found");
 
-    const followUp = await prisma.followUp.create({
-      data: {
-        prospectId,
-        userId: user.id,
-        dueAt: new Date(dueAt),
-        channel,
-        notes: notes?.trim() || undefined,
-      },
-      include: { prospect: { include: { company: true } }, user: true },
+    const followUp = await prisma.$transaction(async (tx) => {
+      const created = await tx.followUp.create({
+        data: {
+          prospectId,
+          userId: user.id,
+          dueAt: due,
+          channel,
+          notes: notes?.trim() || undefined,
+        },
+        include: { prospect: { include: { company: true } }, user: { select: userCardSelect } },
+      });
+      // Reflect the new follow-up in the prospect's next-follow-up field.
+      await recomputeProspectNextFollowUp(tx, prospectId);
+      return created;
     });
 
     return { followUp };

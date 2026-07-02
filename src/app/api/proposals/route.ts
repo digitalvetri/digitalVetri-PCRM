@@ -4,6 +4,7 @@ import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { nextId } from "@/lib/counters";
 import { logActivity } from "@/lib/activity";
 import { generateProposal } from "@/lib/ai/proposal";
@@ -15,7 +16,7 @@ export async function GET() {
   return withApi(async () => {
     await requireUser("proposals.view");
     const proposals = await prisma.proposal.findMany({
-      include: { company: true, user: true },
+      include: { company: true, user: { select: userCardSelect } },
       orderBy: { createdAt: "desc" },
     });
     return { proposals };
@@ -97,7 +98,7 @@ export async function POST(req: Request) {
         amcValue: content.amc?.annualValue ?? null,
         validUntil,
       },
-      include: { company: true, user: true },
+      include: { company: true, user: { select: userCardSelect } },
     });
 
     await logActivity({

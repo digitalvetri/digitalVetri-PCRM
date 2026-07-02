@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { istStartOfMonth, istEndOfMonth } from "@/lib/time";
 
 /** Dashboard KPI aggregation. */
 export async function getDashboardStats() {
@@ -23,11 +24,15 @@ export async function getDashboardStats() {
   ]);
 
   const closedDeals = wonProspects.length;
+  // "Revenue closed this month" keys off the actual WON timestamp (wonAt), not
+  // updatedAt — otherwise any later edit to an old deal re-counts it this month.
+  // Legacy rows with no wonAt fall back to updatedAt. Month is measured in IST.
+  const monthStart = istStartOfMonth();
+  const monthEnd = istEndOfMonth();
   const monthlyRevenue = wonProspects
     .filter((p) => {
-      const d = p.expectedCloseDate ?? p.updatedAt;
-      const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      const closed = p.wonAt ?? p.updatedAt;
+      return closed >= monthStart && closed <= monthEnd;
     })
     .reduce((s, p) => s + (p.proposalValue ?? 0), 0);
 

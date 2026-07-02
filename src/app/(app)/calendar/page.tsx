@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Calendar" };
+
 export default async function CalendarPage() {
   const now = new Date();
   // Widen to current month ±1 so prev/next navigation still shows events

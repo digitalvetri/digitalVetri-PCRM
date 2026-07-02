@@ -1,5 +1,6 @@
+import { cache } from "react";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import type { Role, User } from "@prisma/client";
+import { Prisma, type Role, type User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api-error";
 
@@ -45,9 +46,16 @@ export function roleCan(role: Role, permission: Permission): boolean {
 
 /**
  * Resolve the current app user from the Clerk session, creating the DB
- * record on first sign-in. The first user ever created becomes ADMIN.
+ * record on first sign-in. Wrapped in React `cache()` so the layout, page and
+ * any nested Server Components that call it during one render share a single
+ * result (dedupes the DB round-trip and removes the first-render create race).
+ *
+ * The very first user ever bootstraps as an active ADMIN. Every subsequent
+ * sign-up is created INACTIVE and must be approved by an admin (Settings →
+ * Users) before it can access anything — this is the gate that keeps sign-up
+ * safe even if the Clerk instance allows open registration.
  */
-export async function getCurrentUser(): Promise<User | null> {
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   const { userId: clerkId } = await auth();
   if (!clerkId) return null;
 
@@ -60,9 +68,9 @@ export async function getCurrentUser(): Promise<User | null> {
   const email = cu.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.local`;
   const name = [cu.firstName, cu.lastName].filter(Boolean).join(" ") || "User";
 
-  // A user row with this email may already exist (e.g. seeded demo users).
-  // Claim it by attaching the real Clerk ID instead of colliding on the
-  // unique email constraint.
+  // A user row with this email may already exist (e.g. a seeded or invited
+  // user). Claim it by attaching the real Clerk ID instead of colliding on the
+  // unique email constraint; its existing role/isActive are preserved.
   const byEmail = await prisma.user.findUnique({ where: { email } });
   if (byEmail) {
     return prisma.user.update({
@@ -71,17 +79,29 @@ export async function getCurrentUser(): Promise<User | null> {
     });
   }
 
-  const userCount = await prisma.user.count();
-  return prisma.user.create({
-    data: {
-      clerkId,
-      email,
-      name,
-      imageUrl: cu.imageUrl,
-      role: userCount === 0 ? "ADMIN" : "SALES",
-    },
-  });
-}
+  const isFirstUser = (await prisma.user.count()) === 0;
+  try {
+    return await prisma.user.create({
+      data: {
+        clerkId,
+        email,
+        name,
+        imageUrl: cu.imageUrl,
+        role: isFirstUser ? "ADMIN" : "SALES",
+        isActive: isFirstUser,
+      },
+    });
+  } catch (e) {
+    // Two concurrent requests can race to create the same user on first
+    // sign-in; the unique clerkId/email constraint makes the loser throw
+    // P2002. In that case the other request already created the row — refetch.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const raced = await prisma.user.findUnique({ where: { clerkId } });
+      if (raced) return raced;
+    }
+    throw e;
+  }
+});
 
 /** For API routes: returns the user or throws a Response-shaped error. */
 export async function requireUser(permission?: Permission): Promise<User> {

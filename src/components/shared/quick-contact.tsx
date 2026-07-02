@@ -49,7 +49,7 @@ export function QuickContact({
             <span className="truncate text-sm text-muted-foreground">{phone ?? "No phone on file"}</span>
           </div>
           {waHref && (
-            <Button asChild size="sm" className="bg-[#25d366] text-white hover:bg-[#1ebe5b]">
+            <Button asChild size="sm" className="bg-[#128C7E] text-white hover:bg-[#0e6f63]">
               <a href={waHref} target="_blank" rel="noopener noreferrer">
                 WhatsApp
               </a>

@@ -11,6 +11,8 @@ import { formatINR, formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Proposals" };
+
 export default async function ProposalsPage() {
   const proposals = await prisma.proposal.findMany({
     include: { company: true, user: true },
@@ -65,7 +67,7 @@ export default async function ProposalsPage() {
                     </a>
                   </Button>
                   <Button asChild variant="ghost" size="sm">
-                    <Link href="/companies">View</Link>
+                    <Link href={`/companies/${p.company.id}`}>View</Link>
                   </Button>
                 </div>
               </CardContent>

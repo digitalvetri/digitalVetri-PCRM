@@ -9,6 +9,8 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Companies" };
+
 export default async function CompaniesPage() {
   const [companies, total, analysed, topGrades, scoreAgg] = await Promise.all([
     prisma.company.findMany({

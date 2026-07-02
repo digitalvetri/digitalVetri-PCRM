@@ -156,7 +156,7 @@ export function ImportDialog() {
           <Upload className="h-4 w-4" /> Import
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import Companies</DialogTitle>
           <DialogDescription>
@@ -243,7 +243,7 @@ export function ImportDialog() {
               {/* Website */}
               <TabsContent value="website" className="space-y-3">
                 {websiteRows.map((row, i) => (
-                  <div key={i} className="flex items-end gap-2">
+                  <div key={i} className="flex flex-col sm:flex-row items-end gap-2">
                     <div className="flex-1 space-y-1.5">
                       <Label htmlFor={`${websiteBaseId}-name-${i}`} className={i === 0 ? "" : "sr-only"}>Company name (optional)</Label>
                       <Input
@@ -270,6 +270,7 @@ export function ImportDialog() {
                       variant="ghost"
                       size="icon"
                       className="mb-0.5 h-9 w-9"
+                      aria-label="Remove row"
                       disabled={websiteRows.length === 1}
                       onClick={() => setWebsiteRows((rows) => rows.filter((_, j) => j !== i))}
                     >
@@ -295,7 +296,7 @@ export function ImportDialog() {
               {/* Google Maps */}
               <TabsContent value="maps" className="space-y-3">
                 {mapsRows.map((row, i) => (
-                  <div key={i} className="flex items-end gap-2">
+                  <div key={i} className="flex flex-col sm:flex-row items-end gap-2">
                     <div className="flex-1 space-y-1.5">
                       <Label htmlFor={`${mapsBaseId}-name-${i}`} className={i === 0 ? "" : "sr-only"}>Business name</Label>
                       <Input
@@ -333,6 +334,7 @@ export function ImportDialog() {
                       variant="ghost"
                       size="icon"
                       className="mb-0.5 h-9 w-9"
+                      aria-label="Remove row"
                       disabled={mapsRows.length === 1}
                       onClick={() => setMapsRows((rows) => rows.filter((_, j) => j !== i))}
                     >
@@ -359,7 +361,7 @@ export function ImportDialog() {
               {/* LinkedIn */}
               <TabsContent value="linkedin" className="space-y-3">
                 {linkedinRows.map((row, i) => (
-                  <div key={i} className="flex items-end gap-2">
+                  <div key={i} className="flex flex-col sm:flex-row items-end gap-2">
                     <div className="flex-1 space-y-1.5">
                       <Label htmlFor={`${linkedinBaseId}-name-${i}`} className={i === 0 ? "" : "sr-only"}>Company name</Label>
                       <Input
@@ -388,6 +390,7 @@ export function ImportDialog() {
                       variant="ghost"
                       size="icon"
                       className="mb-0.5 h-9 w-9"
+                      aria-label="Remove row"
                       disabled={linkedinRows.length === 1}
                       onClick={() => setLinkedinRows((rows) => rows.filter((_, j) => j !== i))}
                     >

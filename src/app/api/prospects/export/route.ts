@@ -2,33 +2,32 @@ import type { Prisma } from "@prisma/client";
 import { withApi } from "@/lib/api";
 import { requireUser } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { buildWorkbook, excelResponse, type ExcelColumn } from "@/lib/excel";
 import { enumLabel, formatDate } from "@/lib/utils";
+import { gradeParam, optionalIntParam, prospectStatusParam } from "@/lib/query";
 
 /** Same filter logic as the list route, inlined to keep route files self-contained. */
 function buildProspectWhere(sp: URLSearchParams): Prisma.ProspectWhereInput {
   const where: Prisma.ProspectWhereInput = {};
 
-  const status = sp.get("status");
+  const status = prospectStatusParam(sp.get("status"));
   const assignedTo = sp.get("assignedTo");
-  if (status) where.status = status as never;
+  if (status) where.status = status;
   if (assignedTo) where.assignedToId = assignedTo;
 
   const industry = sp.get("industry");
-  const grade = sp.get("grade");
+  const grade = gradeParam(sp.get("grade"));
   const search = sp.get("q");
-  const minEmp = sp.get("minEmployees");
-  const maxEmp = sp.get("maxEmployees");
+  const minEmp = optionalIntParam(sp.get("minEmployees"));
+  const maxEmp = optionalIntParam(sp.get("maxEmployees"));
 
   const companyWhere: Prisma.CompanyWhereInput = {};
   if (industry) companyWhere.industry = industry;
   if (search) companyWhere.name = { contains: search, mode: "insensitive" };
-  if (grade) companyWhere.analysis = { leadGrade: grade as never };
-  if (minEmp || maxEmp) {
-    companyWhere.employeeEstimate = {
-      gte: minEmp ? Number(minEmp) : undefined,
-      lte: maxEmp ? Number(maxEmp) : undefined,
-    };
+  if (grade) companyWhere.analysis = { leadGrade: grade };
+  if (minEmp !== undefined || maxEmp !== undefined) {
+    companyWhere.employeeEstimate = { gte: minEmp, lte: maxEmp };
   }
   if (Object.keys(companyWhere).length > 0) where.company = companyWhere;
 
@@ -80,7 +79,7 @@ export async function GET(req: Request) {
             decisionMakers: { where: { isPrimary: true }, take: 1 },
           },
         },
-        assignedTo: true,
+        assignedTo: { select: userCardSelect },
       },
       orderBy: [
         { nextFollowUpDate: { sort: "asc", nulls: "last" } },

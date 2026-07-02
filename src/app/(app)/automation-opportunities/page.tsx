@@ -37,6 +37,8 @@ function scoreBucket(score: number): string {
 
 const BUCKETS = ["0-19", "20-39", "40-59", "60-79", "80-100"];
 
+export const metadata = { title: "Automation Opportunities" };
+
 export default async function AutomationOpportunitiesPage() {
   const analyses = await prisma.companyAnalysis.findMany({
     include: { company: true },

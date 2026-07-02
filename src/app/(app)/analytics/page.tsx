@@ -69,6 +69,8 @@ async function getAnalyticsKpis() {
   };
 }
 
+export const metadata = { title: "Analytics" };
+
 export default async function AnalyticsPage() {
   const [kpis, leadScores, opps, industry, city, funnel, grades, trend] = await Promise.all([
     getAnalyticsKpis(),

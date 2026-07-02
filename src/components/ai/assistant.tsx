@@ -197,7 +197,7 @@ export function AiAssistant() {
                 aria-label="Ask the assistant a question"
                 className="h-9 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus:border-primary"
               />
-              <Button type="submit" size="icon" disabled={loading || !input.trim()}>
+              <Button type="submit" size="icon" aria-label="Send message" disabled={loading || !input.trim()}>
                 <Send className="h-4 w-4" />
               </Button>
             </form>

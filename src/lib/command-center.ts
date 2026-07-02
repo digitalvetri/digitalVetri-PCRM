@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { loadSettings } from "@/lib/settings";
+import { istStartOfDay, istEndOfDay, istStartOfMonth } from "@/lib/time";
 
 /** Normalise a date to local midnight (DailyPlan is keyed per day). */
 export function dayStart(d = new Date()): Date {
@@ -15,9 +16,9 @@ export function dayStart(d = new Date()): Date {
  */
 export async function getCommandCenterSnapshot() {
   const now = new Date();
-  const todayStart = dayStart(now);
-  const todayEnd = new Date(todayStart.getTime() + 86400000 - 1);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const todayStart = istStartOfDay();
+  const todayEnd = istEndOfDay();
+  const monthStart = istStartOfMonth();
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
   const soon = new Date(now.getTime() + 7 * 86400000);
 
@@ -35,7 +36,7 @@ export async function getCommandCenterSnapshot() {
   ] = await Promise.all([
     loadSettings(),
     prisma.prospect.findMany({
-      where: { status: "WON", updatedAt: { gte: monthStart } },
+      where: { status: "WON", wonAt: { gte: monthStart } },
       select: { proposalValue: true },
     }),
     prisma.prospect.findMany({
@@ -138,9 +139,13 @@ export function targetFunnel(
 ): TargetFunnel | null {
   if (!target || target <= 0) return null;
   const remaining = Math.max(0, target - closedThisMonth);
-  const deals = Math.ceil(remaining / a.avgDealValue);
-  const proposals = Math.ceil(deals / a.winRate);
-  const meetings = Math.ceil(proposals / a.meetingToProposal);
-  const outreach = Math.ceil(meetings / a.outreachToMeeting);
+  // Guard every rate/divisor: a 0 (or missing) conversion rate must not yield
+  // Infinity/NaN required-leads. A non-positive rate means "unknown", so the
+  // stage passes its count through unchanged rather than exploding.
+  const div = (n: number, rate: number) => (rate > 0 ? Math.ceil(n / rate) : n);
+  const deals = div(remaining, a.avgDealValue);
+  const proposals = div(deals, a.winRate);
+  const meetings = div(proposals, a.meetingToProposal);
+  const outreach = div(meetings, a.outreachToMeeting);
   return { remaining, deals, proposals, meetings, outreach, leads: outreach, assumptions: a };
 }

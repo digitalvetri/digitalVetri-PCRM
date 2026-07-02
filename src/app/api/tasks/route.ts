@@ -3,6 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
+import { enumParam, TASK_STATUSES } from "@/lib/query";
 
 /** GET /api/tasks — filtered list ordered by dueDate asc (nulls last), then priority. */
 export async function GET(req: Request) {
@@ -11,16 +13,16 @@ export async function GET(req: Request) {
     const sp = new URL(req.url).searchParams;
 
     const where: Prisma.TaskWhereInput = {};
-    const status = sp.get("status");
+    const status = enumParam(sp.get("status"), TASK_STATUSES);
     const assignedTo = sp.get("assignedTo");
-    if (status) where.status = status as never;
+    if (status) where.status = status;
     if (assignedTo) where.assignedToId = assignedTo;
 
     const items = await prisma.task.findMany({
       where,
       include: {
-        assignedTo: true,
-        createdBy: true,
+        assignedTo: { select: userCardSelect },
+        createdBy: { select: userCardSelect },
         prospect: { include: { company: true } },
       },
       orderBy: [
@@ -65,8 +67,8 @@ export async function POST(req: Request) {
         createdById: user.id,
       },
       include: {
-        assignedTo: true,
-        createdBy: true,
+        assignedTo: { select: userCardSelect },
+        createdBy: { select: userCardSelect },
         prospect: { include: { company: true } },
       },
     });

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Email Generator" };
+
 export default async function EmailGeneratorPage({
   searchParams,
 }: {

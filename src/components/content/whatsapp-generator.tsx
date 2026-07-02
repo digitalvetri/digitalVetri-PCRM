@@ -62,7 +62,7 @@ interface WhatsAppResult {
 function ChatBubble({ text }: { text: string }) {
   return (
     <div className="rounded-xl bg-[#dcf8c6] p-4 dark:bg-[#005c4b]">
-      <div className="ml-auto max-w-full rounded-lg rounded-tr-none bg-[#25d366]/90 px-3 py-2 text-sm text-white shadow-sm dark:bg-[#25d366]/80">
+      <div className="ml-auto max-w-full rounded-lg rounded-tr-none bg-[#128C7E] px-3 py-2 text-sm text-white shadow-sm dark:bg-[#128C7E]">
         <pre className="whitespace-pre-wrap break-words font-sans">{text}</pre>
         <span className="mt-1 block text-right text-[10px] text-white/80">
           {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ✓✓
@@ -305,7 +305,7 @@ export function WhatsAppGenerator({
                     type="button"
                     size="sm"
                     onClick={sendOnWhatsApp}
-                    className="bg-[#25d366] text-white hover:bg-[#1ebe5b]"
+                    className="bg-[#128C7E] text-white hover:bg-[#0e6f63]"
                   >
                     <MessageCircle className="h-4 w-4" /> Send on WhatsApp
                   </Button>
@@ -356,7 +356,7 @@ export function WhatsAppGenerator({
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-xs text-muted-foreground">{relativeTime(r.createdAt)}</span>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => copy(r.body)}>
+                    <Button type="button" size="sm" variant="ghost" aria-label="Copy message" onClick={() => copy(r.body)}>
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>

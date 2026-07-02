@@ -1,6 +1,7 @@
 import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { logActivity } from "@/lib/activity";
 
 /** POST /api/prospects/[id]/sync — push a qualified prospect to the DigitalVetri CRM. */
@@ -76,7 +77,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         crmSyncedAt: new Date(),
         crmExternalId,
       },
-      include: { company: true, assignedTo: true },
+      include: { company: true, assignedTo: { select: userCardSelect } },
     });
 
     await logActivity({

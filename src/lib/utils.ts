@@ -11,7 +11,9 @@ export function formatINR(amount: number | null | undefined, compact = false): s
   if (compact) {
     if (amount >= 1_00_00_000) return `₹${(amount / 1_00_00_000).toFixed(2)} Cr`;
     if (amount >= 1_00_000) return `₹${(amount / 1_00_000).toFixed(1)} L`;
-    if (amount >= 1_000) return `₹${(amount / 1_000).toFixed(0)}K`;
+    // 1 decimal, trailing ".0" stripped, so ₹1,500 → "₹1.5K" (not the old "₹2K")
+    // and ₹5,000 → "₹5K".
+    if (amount >= 1_000) return `₹${parseFloat((amount / 1_000).toFixed(1))}K`;
   }
   return new Intl.NumberFormat("en-IN", {
     style: "currency",

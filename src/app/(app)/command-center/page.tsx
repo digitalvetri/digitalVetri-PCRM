@@ -31,6 +31,8 @@ import { formatDate, formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Command Center" };
+
 export default async function CommandCenterPage() {
   const [snapshot, plan, companies, rawLeads, automation, agentRunsRaw, outreachRaw] = await Promise.all([
     getCommandCenterSnapshot(),

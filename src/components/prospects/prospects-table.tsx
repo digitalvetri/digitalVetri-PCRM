@@ -392,6 +392,7 @@ export function ProspectsTable({ prospects }: { prospects: ProspectRow[] }) {
             variant="outline"
             size="icon"
             className="h-8 w-8"
+            aria-label="Previous page"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
@@ -401,6 +402,7 @@ export function ProspectsTable({ prospects }: { prospects: ProspectRow[] }) {
             variant="outline"
             size="icon"
             className="h-8 w-8"
+            aria-label="Next page"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >

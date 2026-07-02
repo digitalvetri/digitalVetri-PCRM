@@ -3,8 +3,11 @@ import type { ActivityType } from "@prisma/client";
 import { withApi } from "@/lib/api";
 import { requireUser, roleCan, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { logActivity } from "@/lib/activity";
 import { PROSPECT_STATUSES } from "@/lib/constants";
+import { parseISTDate } from "@/lib/time";
+import { syncProspectFollowUp } from "@/lib/follow-up-sync";
 
 /** GET /api/prospects/[id] — full prospect detail. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -23,8 +26,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             decisionMakers: true,
           },
         },
-        assignedTo: true,
-        followUps: { include: { user: true }, orderBy: { dueAt: "asc" } },
+        assignedTo: { select: userCardSelect },
+        followUps: { include: { user: { select: userCardSelect } }, orderBy: { dueAt: "asc" } },
         tasks: true,
       },
     });
@@ -66,66 +69,52 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       throw new ApiError(403, "Missing permission: prospects.assign");
     }
 
+    // Parse date-only inputs as IST midnight; reject unparseable strings with a
+    // clean 400 rather than letting an Invalid Date reach Prisma as a 500.
+    const toDate = (s: string | null): Date | null => {
+      if (!s) return null;
+      const d = parseISTDate(s);
+      if (!d) throw new ApiError(400, "Invalid date value.");
+      return d;
+    };
+
     const data: Record<string, unknown> = {};
     if (body.status !== undefined) data.status = body.status;
     if (body.assignedToId !== undefined) data.assignedToId = body.assignedToId;
     if (body.proposalValue !== undefined) data.proposalValue = body.proposalValue;
     if (body.probability !== undefined) data.probability = body.probability;
     if (body.lostReason !== undefined) data.lostReason = body.lostReason;
-    if (body.expectedCloseDate !== undefined)
-      data.expectedCloseDate = body.expectedCloseDate ? new Date(body.expectedCloseDate) : null;
-    if (body.nextFollowUpDate !== undefined)
-      data.nextFollowUpDate = body.nextFollowUpDate ? new Date(body.nextFollowUpDate) : null;
-    if (body.lastContactDate !== undefined)
-      data.lastContactDate = body.lastContactDate ? new Date(body.lastContactDate) : null;
+    if (body.expectedCloseDate !== undefined) data.expectedCloseDate = toDate(body.expectedCloseDate);
+    if (body.nextFollowUpDate !== undefined) data.nextFollowUpDate = toDate(body.nextFollowUpDate);
+    if (body.lastContactDate !== undefined) data.lastContactDate = toDate(body.lastContactDate);
 
-    const prospect = await prisma.prospect.update({
-      where: { id },
-      data,
-      include: { company: true, assignedTo: true },
-    });
-
-    // Keep a FollowUp record in sync with the prospect's nextFollowUpDate so the
-    // date shows in the Follow-up Manager and Calendar (which read FollowUp rows,
-    // not the prospect field). Best-effort — never fails the pipeline save.
-    if (body.nextFollowUpDate !== undefined) {
-      try {
-        const newDue = body.nextFollowUpDate ? new Date(body.nextFollowUpDate) : null;
-        const oldDue = existing.nextFollowUpDate;
-        if (newDue?.getTime() !== oldDue?.getTime()) {
-          const prior = oldDue
-            ? await prisma.followUp.findFirst({ where: { prospectId: id, status: "PENDING", dueAt: oldDue } })
-            : null;
-          if (newDue) {
-            if (prior) {
-              await prisma.followUp.update({ where: { id: prior.id }, data: { dueAt: newDue } });
-            } else {
-              const dupe = await prisma.followUp.findFirst({
-                where: { prospectId: id, status: "PENDING", dueAt: newDue },
-              });
-              if (!dupe) {
-                await prisma.followUp.create({
-                  data: {
-                    prospectId: id,
-                    userId: existing.assignedToId ?? user.id,
-                    dueAt: newDue,
-                    channel: "CALL",
-                    notes: "Auto-scheduled from the pipeline follow-up date",
-                  },
-                });
-              }
-            }
-          } else if (prior) {
-            // Date cleared → drop the auto-synced pending follow-up.
-            await prisma.followUp.delete({ where: { id: prior.id } });
-          }
-        }
-      } catch (err) {
-        console.error("[prospect follow-up sync]", err);
-      }
+    // Stamp the true close date on the transition into WON; clear it on the way out.
+    const statusChanged = body.status !== undefined && body.status !== existing.status;
+    if (statusChanged) {
+      if (body.status === "WON") data.wonAt = new Date();
+      else if (existing.status === "WON") data.wonAt = null;
     }
 
-    if (body.status !== undefined && body.status !== existing.status) {
+    // Update the prospect and mirror its follow-up date atomically so the two
+    // can never drift apart on a partial failure.
+    const prospect = await prisma.$transaction(async (tx) => {
+      const p = await tx.prospect.update({
+        where: { id },
+        data,
+        include: { company: true, assignedTo: { select: userCardSelect } },
+      });
+      if (body.nextFollowUpDate !== undefined) {
+        await syncProspectFollowUp(
+          tx,
+          id,
+          data.nextFollowUpDate as Date | null,
+          (body.assignedToId ?? existing.assignedToId) ?? user.id
+        );
+      }
+      return p;
+    });
+
+    if (statusChanged) {
       const type: ActivityType =
         body.status === "WON" ? "DEAL_WON" : body.status === "LOST" ? "DEAL_LOST" : "STATUS_CHANGED";
       const verb =

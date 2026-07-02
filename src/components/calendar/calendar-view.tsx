@@ -90,10 +90,10 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
             <Button variant="outline" size="sm" onClick={() => setCursor(startOfMonth(new Date()))}>
               Today
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCursor((c) => subMonths(c, 1))}>
+            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Previous month" onClick={() => setCursor((c) => subMonths(c, 1))}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCursor((c) => addMonths(c, 1))}>
+            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Next month" onClick={() => setCursor((c) => addMonths(c, 1))}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -129,7 +129,7 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
                     type="button"
                     onClick={() => setSelected(d)}
                     className={cn(
-                      "flex min-h-[68px] flex-col gap-1 rounded-lg border p-1.5 text-left transition-colors sm:min-h-[92px]",
+                      "flex min-h-[68px] flex-col gap-1 rounded-lg border p-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:min-h-[92px]",
                       inMonth ? "bg-background" : "bg-muted/30 text-muted-foreground",
                       isSelected ? "border-primary ring-1 ring-primary" : "border-transparent hover:border-border",
                       evs.length > 0 && "hover:bg-muted/50"

@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 
 type FollowUpChannel = FollowUpItem["channel"];
 
+export const metadata = { title: "Follow-ups" };
+
 export default async function FollowUpsPage() {
   const now = new Date();
   const startOfToday = new Date(now);

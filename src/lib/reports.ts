@@ -92,11 +92,11 @@ export async function getSalesPerformance() {
     .sort((a, b) => b.wonValue - a.wonValue || b.pipelineValue - a.pipelineValue);
 }
 
-/** Last 6 months: count + value of WON prospects by month (uses expectedCloseDate ?? updatedAt). */
+/** Last 6 months: count + value of WON prospects by the month they were won (wonAt). */
 export async function getMonthlyClosures() {
   const won = await prisma.prospect.findMany({
     where: { status: "WON" },
-    select: { proposalValue: true, expectedCloseDate: true, updatedAt: true },
+    select: { proposalValue: true, wonAt: true, updatedAt: true },
   });
 
   const now = new Date();
@@ -107,7 +107,8 @@ export async function getMonthlyClosures() {
     let count = 0;
     let value = 0;
     for (const p of won) {
-      const cd = p.expectedCloseDate ?? p.updatedAt;
+      // Actual won date; legacy rows without wonAt fall back to updatedAt.
+      const cd = p.wonAt ?? p.updatedAt;
       if (cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear()) {
         count++;
         value += p.proposalValue ?? 0;

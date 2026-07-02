@@ -3,33 +3,32 @@ import type { Prisma } from "@prisma/client";
 import { withApi } from "@/lib/api";
 import { requireUser, roleCan, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { nextId } from "@/lib/counters";
 import { logActivity } from "@/lib/activity";
+import { gradeParam, optionalIntParam, pagination, prospectStatusParam } from "@/lib/query";
 
 /** Build the Prisma `where` for the prospect list from query params. */
 function buildProspectWhere(sp: URLSearchParams): Prisma.ProspectWhereInput {
   const where: Prisma.ProspectWhereInput = {};
 
-  const status = sp.get("status");
+  const status = prospectStatusParam(sp.get("status"));
   const assignedTo = sp.get("assignedTo");
-  if (status) where.status = status as never;
+  if (status) where.status = status;
   if (assignedTo) where.assignedToId = assignedTo;
 
   const industry = sp.get("industry");
-  const grade = sp.get("grade");
+  const grade = gradeParam(sp.get("grade"));
   const search = sp.get("q");
-  const minEmp = sp.get("minEmployees");
-  const maxEmp = sp.get("maxEmployees");
+  const minEmp = optionalIntParam(sp.get("minEmployees"));
+  const maxEmp = optionalIntParam(sp.get("maxEmployees"));
 
   const companyWhere: Prisma.CompanyWhereInput = {};
   if (industry) companyWhere.industry = industry;
   if (search) companyWhere.name = { contains: search, mode: "insensitive" };
-  if (grade) companyWhere.analysis = { leadGrade: grade as never };
-  if (minEmp || maxEmp) {
-    companyWhere.employeeEstimate = {
-      gte: minEmp ? Number(minEmp) : undefined,
-      lte: maxEmp ? Number(maxEmp) : undefined,
-    };
+  if (grade) companyWhere.analysis = { leadGrade: grade };
+  if (minEmp !== undefined || maxEmp !== undefined) {
+    companyWhere.employeeEstimate = { gte: minEmp, lte: maxEmp };
   }
   if (Object.keys(companyWhere).length > 0) where.company = companyWhere;
 
@@ -43,8 +42,7 @@ export async function GET(req: Request) {
     const sp = new URL(req.url).searchParams;
     const where = buildProspectWhere(sp);
 
-    const page = Math.max(1, Number(sp.get("page") ?? 1));
-    const pageSize = Math.min(100, Number(sp.get("pageSize") ?? 25));
+    const { page, pageSize, skip, take } = pagination(sp);
 
     const [items, total] = await Promise.all([
       prisma.prospect.findMany({
@@ -56,14 +54,14 @@ export async function GET(req: Request) {
               decisionMakers: { where: { isPrimary: true }, take: 1 },
             },
           },
-          assignedTo: true,
+          assignedTo: { select: userCardSelect },
         },
         orderBy: [
           { nextFollowUpDate: { sort: "asc", nulls: "last" } },
           { company: { analysis: { leadScore: "desc" } } },
         ],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
       prisma.prospect.count({ where }),
     ]);
@@ -90,7 +88,7 @@ export async function POST(req: Request) {
 
     const existing = await prisma.prospect.findUnique({
       where: { companyId },
-      include: { company: true, assignedTo: true },
+      include: { company: true, assignedTo: { select: userCardSelect } },
     });
     if (existing) return { prospect: existing, created: false };
 
@@ -105,7 +103,7 @@ export async function POST(req: Request) {
         status: "QUALIFIED",
         assignedToId: assignedToId ?? undefined,
       },
-      include: { company: true, assignedTo: true },
+      include: { company: true, assignedTo: { select: userCardSelect } },
     });
 
     await logActivity({

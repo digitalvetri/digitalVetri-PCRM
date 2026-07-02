@@ -26,6 +26,8 @@ const CATEGORY_DEFS = [
   { key: "customerManagementIssues", label: "Customer Management Issues" },
 ] as const;
 
+export const metadata = { title: "Lead Intelligence" };
+
 export default async function LeadIntelligencePage() {
   const [withIntel, withoutIntel] = await Promise.all([
     prisma.company.findMany({

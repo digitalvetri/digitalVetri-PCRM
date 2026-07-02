@@ -20,11 +20,12 @@ export async function GET() {
 }
 
 const companyProfileSchema = z.object({
-  name: z.string(),
-  email: z.string(),
-  phone: z.string(),
-  website: z.string(),
-  address: z.string(),
+  name: z.string().max(200),
+  // Validate format when provided, but allow an empty string (optional field).
+  email: z.string().email().or(z.literal("")),
+  phone: z.string().max(40),
+  website: z.string().url().or(z.literal("")),
+  address: z.string().max(500),
 });
 
 const patchSchema = z.object({

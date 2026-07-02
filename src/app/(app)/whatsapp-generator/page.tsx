@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "WhatsApp Generator" };
+
 export default async function WhatsAppGeneratorPage({
   searchParams,
 }: {

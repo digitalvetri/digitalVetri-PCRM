@@ -34,6 +34,8 @@ export function ConfidenceBadge({
     <Tooltip>
       <TooltipTrigger asChild>
         <span
+          role="button"
+          tabIndex={0}
           className={cn(
             "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
             config.cls,

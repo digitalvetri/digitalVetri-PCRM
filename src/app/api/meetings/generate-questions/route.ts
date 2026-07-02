@@ -4,6 +4,7 @@ import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { generateQuestionnaire } from "@/lib/ai/questionnaire";
 
 const schema = z.object({
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
           questionnaire: questionnaire as unknown as Prisma.InputJsonValue,
           questionnaireIndustry: industry,
         },
-        include: { company: true, user: true },
+        include: { company: true, user: { select: userCardSelect } },
       });
       return { meeting: updated, questionnaire, industry };
     }

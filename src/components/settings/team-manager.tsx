@@ -89,6 +89,11 @@ export function TeamManager({
                     <p className="truncate font-medium">
                       {u.name}
                       {isSelf && <span className="ml-1 text-xs text-muted-foreground">(you)</span>}
+                      {!u.isActive && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          Pending approval
+                        </span>
+                      )}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                   </div>

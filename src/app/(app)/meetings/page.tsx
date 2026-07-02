@@ -71,6 +71,8 @@ function MeetingCard({ meeting }: { meeting: MeetingWithRels }) {
   );
 }
 
+export const metadata = { title: "Meetings" };
+
 export default async function MeetingsPage() {
   const meetings = await getMeetings();
   const now = Date.now();

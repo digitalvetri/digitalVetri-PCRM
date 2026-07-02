@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -55,6 +56,15 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
 
+  React.useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen, onClose]);
+
   const nav = (
     <nav className="flex flex-col gap-0.5 px-3 pb-6">
       {NAV_ITEMS.map((item) => {
@@ -96,7 +106,11 @@ export function Sidebar({
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-sidebar animate-in slide-in-from-left duration-200">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            className="absolute inset-y-0 left-0 flex w-72 flex-col bg-sidebar animate-in slide-in-from-left duration-200"
+          >
             <div className="flex h-16 items-center justify-between border-b border-sidebar-border/60 px-5 text-white">
               <Logo tileSize={32} />
               <button

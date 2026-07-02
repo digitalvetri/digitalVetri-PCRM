@@ -2,6 +2,7 @@ import { z } from "zod";
 import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { logActivity } from "@/lib/activity";
 
 /** GET /api/meetings — list meetings with company + user, newest first. */
@@ -9,7 +10,7 @@ export async function GET() {
   return withApi(async () => {
     await requireUser("meetings.view");
     const meetings = await prisma.meeting.findMany({
-      include: { company: true, user: true },
+      include: { company: true, user: { select: userCardSelect } },
       orderBy: { scheduledAt: "desc" },
     });
     return { meetings };
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
         location: data.location ?? undefined,
         agenda: data.agenda ?? undefined,
       },
-      include: { company: true, user: true },
+      include: { company: true, user: { select: userCardSelect } },
     });
 
     await logActivity({

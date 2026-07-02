@@ -36,6 +36,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Dashboard" };
+
 export default async function DashboardPage() {
   const [stats, industry, city, leadScores, funnel, opps, activities] = await Promise.all([
     getDashboardStats(),

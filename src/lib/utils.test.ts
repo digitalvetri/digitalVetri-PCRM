@@ -18,6 +18,9 @@ describe("formatINR", () => {
     expect(formatINR(2_50_00_000, true)).toBe("₹2.50 Cr");
     expect(formatINR(1_00_000, true)).toBe("₹1.0 L");
     expect(formatINR(5_000, true)).toBe("₹5K");
+    // K bucket keeps one significant decimal instead of rounding to a whole K.
+    expect(formatINR(1_500, true)).toBe("₹1.5K");
+    expect(formatINR(2_500, true)).toBe("₹2.5K");
   });
 
   it("falls back to full format below the compact thresholds", () => {

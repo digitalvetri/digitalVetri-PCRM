@@ -145,7 +145,7 @@ function TaskCard({ task, onChanged }: { task: TaskItem; onChanged: () => void }
 
           <div className="flex items-center gap-1">
             {prev && (
-              <Button size="icon" variant="ghost" className="h-7 w-7" disabled={busy} onClick={() => move(prev)}>
+              <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Move to ${prev}`} disabled={busy} onClick={() => move(prev)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             )}

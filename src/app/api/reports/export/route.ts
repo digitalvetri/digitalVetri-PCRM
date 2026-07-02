@@ -1,6 +1,7 @@
 import { withApi } from "@/lib/api";
 import { requireUser } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { buildWorkbook, excelResponse, type ExcelColumn } from "@/lib/excel";
 import { enumLabel, formatDate } from "@/lib/utils";
 
@@ -23,7 +24,7 @@ export async function GET() {
     await requireUser("reports.view");
 
     const prospects = await prisma.prospect.findMany({
-      include: { company: true, assignedTo: true },
+      include: { company: true, assignedTo: { select: userCardSelect } },
       orderBy: [
         { proposalValue: { sort: "desc", nulls: "last" } },
         { updatedAt: "desc" },

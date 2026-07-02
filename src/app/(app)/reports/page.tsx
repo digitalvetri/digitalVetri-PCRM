@@ -31,6 +31,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Reports" };
+
 export default async function ReportsPage() {
   const [forecast, leadSources, industry, conversion, performance, closures, pipeline] =
     await Promise.all([

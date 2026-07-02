@@ -75,6 +75,8 @@ function Chips({ items, label }: { items: string[]; label: string }) {
   );
 }
 
+export const metadata = { title: "Company Profile" };
+
 export default async function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const company = await prisma.company.findUnique({

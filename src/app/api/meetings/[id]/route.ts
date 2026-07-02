@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { logActivity } from "@/lib/activity";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -11,7 +12,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const meeting = await prisma.meeting.findUnique({
       where: { id },
-      include: { company: true, user: true },
+      include: { company: true, user: { select: userCardSelect } },
     });
     if (!meeting) throw new ApiError(404, "Meeting not found");
     return { meeting };
@@ -59,7 +60,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const meeting = await prisma.meeting.update({
       where: { id },
       data,
-      include: { company: true, user: true },
+      include: { company: true, user: { select: userCardSelect } },
     });
 
     if (body.status === "COMPLETED") {

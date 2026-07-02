@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { createCompanyShell } from "@/lib/import";
 import { logActivity } from "@/lib/activity";
+import { gradeParam, optionalIntParam, pagination } from "@/lib/query";
 
 /** GET /api/companies — filtered, paginated list. */
 export async function GET(req: Request) {
@@ -16,33 +17,29 @@ export async function GET(req: Request) {
     const industry = sp.get("industry");
     const city = sp.get("city");
     const state = sp.get("state");
-    const grade = sp.get("grade");
+    const grade = gradeParam(sp.get("grade"));
     const search = sp.get("q");
-    const minEmp = sp.get("minEmployees");
-    const maxEmp = sp.get("maxEmployees");
+    const minEmp = optionalIntParam(sp.get("minEmployees"));
+    const maxEmp = optionalIntParam(sp.get("maxEmployees"));
 
     if (industry) where.industry = industry;
     if (city) where.city = city;
     if (state) where.state = state;
     if (search) where.name = { contains: search, mode: "insensitive" };
-    if (minEmp || maxEmp) {
-      where.employeeEstimate = {
-        gte: minEmp ? Number(minEmp) : undefined,
-        lte: maxEmp ? Number(maxEmp) : undefined,
-      };
+    if (minEmp !== undefined || maxEmp !== undefined) {
+      where.employeeEstimate = { gte: minEmp, lte: maxEmp };
     }
-    if (grade) where.analysis = { leadGrade: grade as never };
+    if (grade) where.analysis = { leadGrade: grade };
 
-    const page = Math.max(1, Number(sp.get("page") ?? 1));
-    const pageSize = Math.min(100, Number(sp.get("pageSize") ?? 25));
+    const { page, pageSize, skip, take } = pagination(sp);
 
     const [items, total] = await Promise.all([
       prisma.company.findMany({
         where,
         include: { analysis: true, decisionMakers: { where: { isPrimary: true }, take: 1 }, prospect: true },
         orderBy: [{ analysis: { leadScore: "desc" } }, { createdAt: "desc" }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
       prisma.company.count({ where }),
     ]);

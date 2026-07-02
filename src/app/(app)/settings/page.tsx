@@ -17,6 +17,8 @@ import { initials, enumLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Settings" };
+
 export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");

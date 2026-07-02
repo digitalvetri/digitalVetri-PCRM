@@ -286,6 +286,10 @@ model Prospect {
   probability       Int? // 0-100
   lostReason        String?
 
+  // Timestamp of the transition into WON — the true "closed" date for revenue
+  // reporting. Distinct from updatedAt (which any later edit bumps).
+  wonAt DateTime?
+
   syncedToCrm   Boolean   @default(false)
   crmSyncedAt   DateTime?
   crmExternalId String?
@@ -301,6 +305,7 @@ model Prospect {
   @@index([status])
   @@index([assignedToId])
   @@index([nextFollowUpDate])
+  @@index([wonAt])
 }
 
 /// A ready-to-send outreach message drafted for a lead (queued for review).
@@ -562,6 +567,11 @@ model FollowUp {
   notes   String?
   outcome String?
   completedAt DateTime?
+
+  // True for the follow-up auto-created to mirror Prospect.nextFollowUpDate.
+  // Lets the pipeline↔follow-up bridge find and update its own row instead of
+  // matching on an exact dueAt (which drifts / duplicates).
+  autoSynced Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

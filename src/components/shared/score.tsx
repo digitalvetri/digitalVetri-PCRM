@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 function scoreColor(score: number): string {
   if (score >= 85) return "text-emerald-500";
   if (score >= 70) return "text-blue-500";
-  if (score >= 50) return "text-amber-500";
-  return "text-slate-400";
+  if (score >= 50) return "text-amber-600";
+  return "text-slate-600";
 }
 function scoreBg(score: number): string {
   if (score >= 85) return "bg-emerald-500";

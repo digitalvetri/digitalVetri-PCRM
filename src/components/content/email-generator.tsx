@@ -289,6 +289,7 @@ export function EmailGenerator({
                     type="button"
                     size="sm"
                     variant="ghost"
+                    aria-label="Copy subject"
                     onClick={() => copy(result.subject, "Subject")}
                   >
                     <Copy className="h-4 w-4" />
@@ -363,6 +364,7 @@ export function EmailGenerator({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      aria-label="Copy email"
                       onClick={() =>
                         copy(`Subject: ${r.subject ?? ""}\n\n${r.body}`, "Email")
                       }

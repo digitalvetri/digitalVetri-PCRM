@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { ApiError } from "@/lib/api-error";
 import { prisma } from "@/lib/prisma";
 import { getCommandCenterSnapshot, targetFunnel } from "@/lib/command-center";
@@ -59,12 +60,22 @@ export async function setAutomationConfig(cfg: AutomationConfig): Promise<void> 
 }
 
 /** Verify a scheduler request carries the CRON_SECRET (Bearer header or ?secret=). */
+/** Constant-time string compare so cron-secret checks don't leak via timing. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
 export function assertCron(req: Request): void {
   const secret = process.env.CRON_SECRET;
   if (!secret) throw new ApiError(500, "CRON_SECRET is not configured on the server.");
-  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const query = new URL(req.url).searchParams.get("secret");
-  if (bearer !== secret && query !== secret) throw new ApiError(401, "Unauthorized cron request.");
+  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  const query = new URL(req.url).searchParams.get("secret") ?? "";
+  if (!safeEqual(bearer, secret) && !safeEqual(query, secret)) {
+    throw new ApiError(401, "Unauthorized cron request.");
+  }
 }
 
 /** Build the morning briefing text from the live pipeline snapshot. */

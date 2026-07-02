@@ -35,6 +35,8 @@ function toDateInput(d: Date | null | undefined): string | null {
   return new Date(d).toISOString().slice(0, 10);
 }
 
+export const metadata = { title: "Prospect" };
+
 export default async function ProspectDetailPage({
   params,
 }: {
@@ -93,12 +95,12 @@ export default async function ProspectDetailPage({
           </span>
         )}
         <Button asChild variant="outline" size="sm">
-          <Link href={`/proposals/new?companyId=${c.id}`}>
+          <Link href="/proposals">
             <FileText className="h-4 w-4" /> Proposal
           </Link>
         </Button>
         <Button asChild variant="outline" size="sm">
-          <Link href={`/content/new?companyId=${c.id}`}>
+          <Link href={`/email-generator?companyId=${c.id}`}>
             <Send className="h-4 w-4" /> Email
           </Link>
         </Button>

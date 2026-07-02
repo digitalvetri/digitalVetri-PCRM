@@ -2,6 +2,7 @@ import { z } from "zod";
 import { withApi } from "@/lib/api";
 import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { logActivity } from "@/lib/activity";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -15,8 +16,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         leadIntelligence: true,
         recommendation: true,
         decisionMakers: true,
-        prospect: { include: { assignedTo: true } },
-        notes: { include: { author: true }, orderBy: { createdAt: "desc" } },
+        prospect: { include: { assignedTo: { select: userCardSelect } } },
+        notes: { include: { author: { select: userCardSelect } }, orderBy: { createdAt: "desc" } },
         meetings: { orderBy: { scheduledAt: "desc" } },
         proposals: { orderBy: { createdAt: "desc" } },
       },
