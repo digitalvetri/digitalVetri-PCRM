@@ -65,6 +65,9 @@ export async function POST() {
         try {
           const res = await fetch(`${apiUrl!.replace(/\/$/, "")}/prospects`, {
             method: "POST",
+            // Bound each call so a hung CRM can't stall the whole sync (matches
+            // the timeout on our other outbound fetches).
+            signal: AbortSignal.timeout(15_000),
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${apiKey}`,

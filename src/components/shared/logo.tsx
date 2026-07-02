@@ -25,7 +25,7 @@ export function Logo({
     <span className={cn("flex items-center gap-2.5", className)}>
       <Image
         src="/brand/dv-monogram.png"
-        alt="DigitalVetri"
+        alt={wordmark ? "" : "DigitalVetri"}
         width={tileSize}
         height={tileSize}
         priority

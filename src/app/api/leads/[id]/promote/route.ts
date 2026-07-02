@@ -22,43 +22,62 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       return { companyId: lead.promotedCompanyId, alreadyPromoted: true };
     }
 
-    const importSource: ImportSource = lead.source === "PLACES" ? "GOOGLE_MAPS" : "MANUAL";
-    const company = await createCompanyShell(
-      {
-        name: lead.name,
-        website: lead.website,
-        phone: lead.phone,
-        publicEmail: lead.email,
-        city: lead.city,
-        state: lead.state,
-        industry: lead.industry,
-      },
-      importSource,
-      { discoveredLeadId: lead.id, recommendedService: lead.recommendedService }
-    );
-
-    const prospectId = await nextId("prospect", "DV-P");
-    await prisma.prospect.create({
-      data: { prospectId, companyId: company.id, status: "QUALIFIED", assignedToId: user.id },
+    // Atomically claim the lead so two concurrent promotions (double-click/retry)
+    // can't both proceed and create duplicate companies/prospects.
+    const claim = await prisma.discoveredLead.updateMany({
+      where: { id, status: { not: "PROMOTED" } },
+      data: { status: "PROMOTED" },
     });
-
-    const noteBody = `Discovered lead → recommended: ${lead.recommendedService ?? "—"}. ${lead.summary ?? ""}`.trim();
-    if (noteBody) {
-      await prisma.note.create({ data: { companyId: company.id, authorId: user.id, content: noteBody } });
+    if (claim.count === 0) {
+      const fresh = await prisma.discoveredLead.findUnique({ where: { id } });
+      return { companyId: fresh?.promotedCompanyId ?? null, alreadyPromoted: true };
     }
 
-    await prisma.discoveredLead.update({
-      where: { id },
-      data: { status: "PROMOTED", promotedCompanyId: company.id },
-    });
+    try {
+      const importSource: ImportSource = lead.source === "PLACES" ? "GOOGLE_MAPS" : "MANUAL";
+      const company = await createCompanyShell(
+        {
+          name: lead.name,
+          website: lead.website,
+          phone: lead.phone,
+          publicEmail: lead.email,
+          city: lead.city,
+          state: lead.state,
+          industry: lead.industry,
+        },
+        importSource,
+        { discoveredLeadId: lead.id, recommendedService: lead.recommendedService }
+      );
 
-    await logActivity({
-      type: "PROSPECT_CREATED",
-      message: `${user.name} promoted lead “${lead.name}” to a prospect (${prospectId})`,
-      userId: user.id,
-      companyId: company.id,
-    });
+      const prospectId = await nextId("prospect", "DV-P");
+      const noteBody = `Discovered lead → recommended: ${lead.recommendedService ?? "—"}. ${lead.summary ?? ""}`.trim();
 
-    return { companyId: company.id, prospectId, ok: true };
+      // Prospect + note + the lead's promotedCompanyId land together or not at all.
+      await prisma.$transaction(async (tx) => {
+        await tx.prospect.create({
+          data: { prospectId, companyId: company.id, status: "QUALIFIED", assignedToId: user.id },
+        });
+        if (noteBody) {
+          await tx.note.create({ data: { companyId: company.id, authorId: user.id, content: noteBody } });
+        }
+        await tx.discoveredLead.update({ where: { id }, data: { promotedCompanyId: company.id } });
+      });
+
+      await logActivity({
+        type: "PROSPECT_CREATED",
+        message: `${user.name} promoted lead “${lead.name}” to a prospect (${prospectId})`,
+        userId: user.id,
+        companyId: company.id,
+      });
+
+      return { companyId: company.id, prospectId, ok: true };
+    } catch (e) {
+      // Roll the claim back so a transient failure leaves the lead retryable.
+      await prisma.discoveredLead.updateMany({
+        where: { id },
+        data: { status: lead.status, promotedCompanyId: null },
+      });
+      throw e;
+    }
   });
 }

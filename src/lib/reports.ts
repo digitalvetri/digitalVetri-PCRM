@@ -1,5 +1,6 @@
 import type { ProspectStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { istMonthKey, IST_OFFSET_MS } from "@/lib/time";
 
 /** Prospect statuses that count as "active pipeline" (mirrors getDashboardStats). */
 const ACTIVE_STATUSES: ProspectStatus[] = [
@@ -99,17 +100,25 @@ export async function getMonthlyClosures() {
     select: { proposalValue: true, wonAt: true, updatedAt: true },
   });
 
-  const now = new Date();
   const months: { name: string; count: number; value: number }[] = [];
+  // Bucket by IST month (server runs UTC), consistent with the dashboard KPIs.
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const base = istNow.getUTCFullYear() * 12 + istNow.getUTCMonth();
   for (let i = -5; i <= 0; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+    const tot = base + i;
+    const y = Math.floor(tot / 12);
+    const m = ((tot % 12) + 12) % 12;
+    const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+    const label = new Date(Date.UTC(y, m, 1)).toLocaleDateString("en-IN", {
+      month: "short",
+      year: "2-digit",
+      timeZone: "UTC",
+    });
     let count = 0;
     let value = 0;
     for (const p of won) {
       // Actual won date; legacy rows without wonAt fall back to updatedAt.
-      const cd = p.wonAt ?? p.updatedAt;
-      if (cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear()) {
+      if (istMonthKey(p.wonAt ?? p.updatedAt) === key) {
         count++;
         value += p.proposalValue ?? 0;
       }

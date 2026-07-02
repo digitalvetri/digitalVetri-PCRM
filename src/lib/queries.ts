@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { istStartOfMonth, istEndOfMonth } from "@/lib/time";
+import { istStartOfMonth, istEndOfMonth, istMonthKey, IST_OFFSET_MS } from "@/lib/time";
 
 /** Dashboard KPI aggregation. */
 export async function getDashboardStats() {
@@ -19,8 +19,15 @@ export async function getDashboardStats() {
     prisma.companyAnalysis.count({ where: { leadGrade: "A" } }),
     prisma.meeting.count(),
     prisma.proposal.count(),
-    prisma.prospect.findMany({ where: { status: "WON" } }),
-    prisma.prospect.findMany({ where: { status: { notIn: ["LOST", "DISQUALIFIED", "WON"] } } }),
+    // Only the columns each reducer needs — not full rows with every relation.
+    prisma.prospect.findMany({
+      where: { status: "WON" },
+      select: { proposalValue: true, wonAt: true, updatedAt: true },
+    }),
+    prisma.prospect.findMany({
+      where: { status: { notIn: ["LOST", "DISQUALIFIED", "WON"] } },
+      select: { proposalValue: true, probability: true },
+    }),
   ]);
 
   const closedDeals = wonProspects.length;
@@ -148,15 +155,24 @@ export async function getRevenueForecast() {
     where: { status: { notIn: ["LOST", "DISQUALIFIED"] }, expectedCloseDate: { not: null } },
   });
   const months: { name: string; won: number; forecast: number }[] = [];
-  const now = new Date();
+  // Bucket by IST month (server runs UTC) so 1st-of-month close dates don't fall
+  // into the previous month's bar — consistent with the IST monthlyRevenue KPI.
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const base = istNow.getUTCFullYear() * 12 + istNow.getUTCMonth();
   for (let i = -5; i <= 3; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const label = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+    const tot = base + i;
+    const y = Math.floor(tot / 12);
+    const m = ((tot % 12) + 12) % 12;
+    const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+    const label = new Date(Date.UTC(y, m, 1)).toLocaleDateString("en-IN", {
+      month: "short",
+      year: "2-digit",
+      timeZone: "UTC",
+    });
     let won = 0;
     let forecast = 0;
     for (const p of prospects) {
-      const cd = p.expectedCloseDate!;
-      if (cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear()) {
+      if (istMonthKey(p.expectedCloseDate!) === key) {
         if (p.status === "WON") won += p.proposalValue ?? 0;
         else forecast += (p.proposalValue ?? 0) * ((p.probability ?? 0) / 100);
       }

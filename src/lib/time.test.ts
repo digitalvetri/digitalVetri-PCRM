@@ -5,6 +5,8 @@ import {
   istStartOfMonth,
   istEndOfMonth,
   parseISTDate,
+  istMonthKey,
+  istDateInputValue,
 } from "./time";
 
 describe("IST day/month boundaries", () => {
@@ -34,6 +36,27 @@ describe("IST day/month boundaries", () => {
 
   it("computes IST month end", () => {
     expect(istEndOfMonth(eveningIST).toISOString()).toBe("2026-07-31T18:29:59.999Z");
+  });
+});
+
+describe("istMonthKey — buckets by IST month", () => {
+  it("puts an IST-evening month-boundary instant in the correct month", () => {
+    // 2026-07-31 21:30 UTC == 2026-08-01 03:00 IST → August.
+    expect(istMonthKey(new Date("2026-07-31T21:30:00Z"))).toBe("2026-08");
+    // 2026-07-31 17:00 UTC == 2026-07-31 22:30 IST → July.
+    expect(istMonthKey(new Date("2026-07-31T17:00:00Z"))).toBe("2026-07");
+  });
+});
+
+describe("istDateInputValue — <input type=date> value in IST", () => {
+  it("round-trips an IST-midnight instant to the same calendar day", () => {
+    // A date stored as Jul 10 IST midnight is Jul 9 18:30 UTC.
+    const stored = parseISTDate("2026-07-10")!;
+    expect(istDateInputValue(stored)).toBe("2026-07-10");
+  });
+  it("keeps an IST-evening instant on the same IST day", () => {
+    // 2026-07-10 20:00 UTC == 2026-07-11 01:30 IST.
+    expect(istDateInputValue(new Date("2026-07-10T20:00:00Z"))).toBe("2026-07-11");
   });
 });
 

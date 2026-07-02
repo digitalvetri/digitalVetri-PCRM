@@ -55,14 +55,44 @@ export function Sidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const drawerRef = React.useRef<HTMLElement>(null);
 
+  // Focus trap for the mobile drawer: move focus in on open, loop Tab within
+  // the drawer, close on Escape, and restore focus to the trigger on close.
   React.useEffect(() => {
     if (!mobileOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      Array.from(
+        drawerRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+    focusables()[0]?.focus();
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus?.();
+    };
   }, [mobileOpen, onClose]);
 
   const nav = (
@@ -105,10 +135,12 @@ export function Sidebar({
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
           <aside
+            ref={drawerRef}
             role="dialog"
             aria-modal="true"
+            aria-label="Main navigation"
             className="absolute inset-y-0 left-0 flex w-72 flex-col bg-sidebar animate-in slide-in-from-left duration-200"
           >
             <div className="flex h-16 items-center justify-between border-b border-sidebar-border/60 px-5 text-white">

@@ -7,6 +7,7 @@ import {
   type ProspectOption,
 } from "@/components/follow-ups/follow-up-board";
 import { prisma } from "@/lib/prisma";
+import { istStartOfDay, istEndOfDay } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -15,15 +16,11 @@ type FollowUpChannel = FollowUpItem["channel"];
 export const metadata = { title: "Follow-ups" };
 
 export default async function FollowUpsPage() {
-  const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
-  const in7 = new Date(endOfToday);
-  in7.setDate(in7.getDate() + 7);
-  const weekAgo = new Date(now);
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  // IST day boundaries (server runs UTC) so "overdue/today" match the API route.
+  const startOfToday = istStartOfDay();
+  const endOfToday = istEndOfDay();
+  const in7 = new Date(endOfToday.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(startOfToday.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const [active, completedRaw, prospectsRaw] = await Promise.all([
     prisma.followUp.findMany({
@@ -37,9 +34,12 @@ export default async function FollowUpsPage() {
       orderBy: { completedAt: "desc" },
       take: 9,
     }),
+    // Only the two fields the picker renders — not full prospect+company rows.
     prisma.prospect.findMany({
-      include: { company: true },
+      where: { status: { notIn: ["LOST", "DISQUALIFIED", "WON"] } },
+      select: { id: true, company: { select: { name: true } } },
       orderBy: { company: { name: "asc" } },
+      take: 500,
     }),
   ]);
 

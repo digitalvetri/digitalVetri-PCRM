@@ -41,6 +41,21 @@ export function istEndOfMonth(at: Date = new Date()): Date {
   return new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0) - IST_OFFSET_MS - 1);
 }
 
+/** yyyy-MM key of the IST month containing `at` — for bucketing month charts. */
+export function istMonthKey(at: Date): string {
+  const shifted = new Date(at.getTime() + IST_OFFSET_MS);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * yyyy-MM-dd for an `<input type="date">`, rendered in IST so a value stored as
+ * IST midnight round-trips to the same calendar day (naive toISOString would
+ * show the previous day for IST-midnight instants).
+ */
+export function istDateInputValue(at: Date): string {
+  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 /**
  * Parse a value from an `<input type="date">` ("yyyy-mm-dd") as IST local
  * midnight rather than UTC midnight (which would shift it 5.5h earlier). Full

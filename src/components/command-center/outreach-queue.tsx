@@ -112,7 +112,7 @@ export function OutreachQueue({ drafts }: { drafts: OutreachDraftItem[] }) {
               <span className="truncate font-semibold">{d.leadName}</span>
               <Badge variant="secondary">{d.channel === "WHATSAPP" ? "WhatsApp" : "Email"}</Badge>
             </div>
-            <span className="shrink-0 text-xs text-muted-foreground">{d.toContact ?? "no contact"}</span>
+            <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground">{d.toContact ?? "no contact"}</span>
           </div>
 
           {d.subject && (

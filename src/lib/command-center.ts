@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { loadSettings } from "@/lib/settings";
-import { istStartOfDay, istEndOfDay, istStartOfMonth } from "@/lib/time";
+import { istStartOfDay, istEndOfDay, istStartOfMonth, istEndOfMonth } from "@/lib/time";
 
 /** Normalise a date to local midnight (DailyPlan is keyed per day). */
 export function dayStart(d = new Date()): Date {
@@ -19,6 +19,7 @@ export async function getCommandCenterSnapshot() {
   const todayStart = istStartOfDay();
   const todayEnd = istEndOfDay();
   const monthStart = istStartOfMonth();
+  const monthEnd = istEndOfMonth();
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
   const soon = new Date(now.getTime() + 7 * 86400000);
 
@@ -36,7 +37,15 @@ export async function getCommandCenterSnapshot() {
   ] = await Promise.all([
     loadSettings(),
     prisma.prospect.findMany({
-      where: { status: "WON", wonAt: { gte: monthStart } },
+      // Won this IST month; legacy rows with a null wonAt fall back to updatedAt
+      // so this figure agrees with the dashboard and reports.
+      where: {
+        status: "WON",
+        OR: [
+          { wonAt: { gte: monthStart, lte: monthEnd } },
+          { wonAt: null, updatedAt: { gte: monthStart, lte: monthEnd } },
+        ],
+      },
       select: { proposalValue: true },
     }),
     prisma.prospect.findMany({

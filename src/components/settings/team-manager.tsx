@@ -119,6 +119,7 @@ export function TeamManager({
               </TableCell>
               <TableCell className="text-right">
                 <Switch
+                  aria-label={`${u.isActive ? "Deactivate" : "Activate"} ${u.name}`}
                   checked={u.isActive}
                   disabled={busy || isSelf}
                   onCheckedChange={(checked) => patchUser(u.id, { isActive: checked })}

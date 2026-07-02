@@ -29,16 +29,24 @@ export async function syncProspectFollowUp(
         data: { dueAt: newDue, status: "PENDING", userId: ownerId },
       });
     } else {
-      await db.followUp.create({
-        data: {
-          prospectId,
-          userId: ownerId,
-          dueAt: newDue,
-          channel: "CALL",
-          autoSynced: true,
-          notes: "Auto-scheduled from the pipeline follow-up date",
-        },
+      // Don't duplicate a follow-up that already covers this date (e.g. a manual
+      // one the user created in the Follow-up Manager).
+      const existingAtDate = await db.followUp.findFirst({
+        where: { prospectId, status: ACTIVE_STATUS, dueAt: newDue },
+        select: { id: true },
       });
+      if (!existingAtDate) {
+        await db.followUp.create({
+          data: {
+            prospectId,
+            userId: ownerId,
+            dueAt: newDue,
+            channel: "CALL",
+            autoSynced: true,
+            notes: "Auto-scheduled from the pipeline follow-up date",
+          },
+        });
+      }
     }
   } else if (managed) {
     await db.followUp.delete({ where: { id: managed.id } });

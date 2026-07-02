@@ -95,6 +95,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       else if (existing.status === "WON") data.wonAt = null;
     }
 
+    // The edit form resends nextFollowUpDate on every save, so only touch the
+    // follow-up bridge when the date VALUE actually changed — otherwise an
+    // unrelated field edit would spawn a duplicate follow-up.
+    const newFollowUp = data.nextFollowUpDate as Date | null | undefined;
+    const oldTime = existing.nextFollowUpDate?.getTime() ?? null;
+    const newTime = newFollowUp?.getTime() ?? null;
+    const followUpChanged = body.nextFollowUpDate !== undefined && oldTime !== newTime;
+    const assigneeChanged = body.assignedToId !== undefined && body.assignedToId !== existing.assignedToId;
+
     // Update the prospect and mirror its follow-up date atomically so the two
     // can never drift apart on a partial failure.
     const prospect = await prisma.$transaction(async (tx) => {
@@ -103,13 +112,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         data,
         include: { company: true, assignedTo: { select: userCardSelect } },
       });
-      if (body.nextFollowUpDate !== undefined) {
+      if (followUpChanged) {
         await syncProspectFollowUp(
           tx,
           id,
-          data.nextFollowUpDate as Date | null,
+          newFollowUp ?? null,
           (body.assignedToId ?? existing.assignedToId) ?? user.id
         );
+      }
+      // Reassignment: move the auto-synced follow-up to the new owner so it shows
+      // in their Follow-up Manager (which filters by userId).
+      if (assigneeChanged && body.assignedToId) {
+        await tx.followUp.updateMany({
+          where: { prospectId: id, autoSynced: true, status: { in: ["PENDING", "RESCHEDULED"] } },
+          data: { userId: body.assignedToId },
+        });
       }
       return p;
     });

@@ -28,6 +28,9 @@ export function formatDate(date: Date | string | null | undefined): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    // Always display in IST regardless of server/runtime timezone (the server
+    // runs UTC) so date-only values don't render a day early.
+    timeZone: "Asia/Kolkata",
   }).format(new Date(date));
 }
 
@@ -39,6 +42,7 @@ export function formatDateTime(date: Date | string | null | undefined): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Kolkata",
   }).format(new Date(date));
 }
 

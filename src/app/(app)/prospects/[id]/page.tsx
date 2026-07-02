@@ -25,14 +25,16 @@ import { NotesPanel } from "@/components/shared/notes-panel";
 import { QuickContact } from "@/components/shared/quick-contact";
 import { getCurrentUser, roleCan } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { userCardSelect } from "@/lib/selects";
 import { formatDate, formatINR, enumLabel } from "@/lib/utils";
+import { istDateInputValue } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-/** Format a Date as yyyy-MM-dd for <input type="date">. */
+/** Format a Date as yyyy-MM-dd (IST) for <input type="date">. */
 function toDateInput(d: Date | null | undefined): string | null {
   if (!d) return null;
-  return new Date(d).toISOString().slice(0, 10);
+  return istDateInputValue(new Date(d));
 }
 
 export const metadata = { title: "Prospect" };
@@ -60,8 +62,8 @@ export default async function ProspectDetailPage({
             },
           },
         },
-        assignedTo: true,
-        followUps: { include: { user: true }, orderBy: { dueAt: "asc" } },
+        assignedTo: { select: userCardSelect },
+        followUps: { include: { user: { select: userCardSelect } }, orderBy: { dueAt: "asc" } },
         tasks: true,
       },
     }),

@@ -16,6 +16,7 @@ import {
   parseISO,
 } from "date-fns";
 import { ChevronLeft, ChevronRight, CalendarClock, BellRing, ListTodo } from "lucide-react";
+import { istDateInputValue } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -59,8 +60,10 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export function CalendarView({ events }: { events: CalendarEvent[] }) {
   const [cursor, setCursor] = React.useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = React.useState<Date | null>(null);
-
-  const today = new Date();
+  // "today" depends on the clock/timezone, so only apply the highlight after
+  // mount — otherwise the UTC-server SSR and the IST-browser disagree (hydration).
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
 
   const gridStart = startOfWeek(startOfMonth(cursor));
   const gridEnd = endOfWeek(endOfMonth(cursor));
@@ -69,7 +72,9 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
   const eventsByDay = React.useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const e of events) {
-      const key = format(parseISO(e.date), "yyyy-MM-dd");
+      // Bucket by IST calendar day, computed timezone-independently, so the
+      // server and client key every event to the same cell.
+      const key = istDateInputValue(parseISO(e.date));
       const arr = map.get(key) ?? [];
       arr.push(e);
       map.set(key, arr);
@@ -77,7 +82,8 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
     return map;
   }, [events]);
 
-  const dayEvents = (d: Date) => eventsByDay.get(format(d, "yyyy-MM-dd")) ?? [];
+  const todayKey = mounted ? istDateInputValue(new Date()) : null;
+  const dayEvents = (d: Date) => eventsByDay.get(istDateInputValue(d)) ?? [];
   const selectedEvents = selected ? dayEvents(selected) : [];
 
   return (
@@ -121,7 +127,7 @@ export function CalendarView({ events }: { events: CalendarEvent[] }) {
               {days.map((d) => {
                 const evs = dayEvents(d);
                 const inMonth = isSameMonth(d, cursor);
-                const isToday = isSameDay(d, today);
+                const isToday = istDateInputValue(d) === todayKey;
                 const isSelected = selected != null && isSameDay(d, selected);
                 return (
                   <button

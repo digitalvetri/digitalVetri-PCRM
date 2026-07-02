@@ -142,10 +142,10 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               href={company.website}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1.5 text-primary hover:underline"
+              className="flex min-w-0 max-w-full items-center gap-1.5 text-primary hover:underline"
             >
-              <Globe className="h-4 w-4" />
-              {company.website.replace(/^https?:\/\//, "")}
+              <Globe className="h-4 w-4 shrink-0" />
+              <span className="truncate">{company.website.replace(/^https?:\/\//, "")}</span>
             </a>
           )}
           {company.phone && (
@@ -265,7 +265,8 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                             href={url}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-md border p-1.5 text-muted-foreground hover:text-primary"
+                            aria-label={`${company.name} on ${k}`}
+                            className="rounded-md border p-1.5 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                           >
                             <Icon className="h-4 w-4" />
                           </a>
@@ -309,12 +310,22 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           {d.email && (
-                            <a href={`mailto:${d.email}`} className="hover:text-primary">
+                            <a
+                              href={`mailto:${d.email}`}
+                              aria-label={`Email ${d.name}`}
+                              className="rounded-md p-0.5 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            >
                               <Mail className="h-4 w-4" />
                             </a>
                           )}
                           {d.linkedinUrl && (
-                            <a href={d.linkedinUrl} target="_blank" rel="noreferrer" className="hover:text-primary">
+                            <a
+                              href={d.linkedinUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`${d.name} on LinkedIn`}
+                              className="rounded-md p-0.5 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            >
                               <Linkedin className="h-4 w-4" />
                             </a>
                           )}

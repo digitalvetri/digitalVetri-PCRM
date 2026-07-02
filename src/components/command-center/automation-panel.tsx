@@ -118,7 +118,7 @@ export function AutomationPanel({
               <p className="text-sm font-medium">Daily auto-discovery</p>
               <p className="text-xs text-muted-foreground">Runs once a day when deployed with a scheduler.</p>
             </div>
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
+            <Switch aria-label="Daily auto-discovery" checked={enabled} onCheckedChange={setEnabled} />
           </div>
 
           <div className="space-y-2">
@@ -182,7 +182,7 @@ export function AutomationPanel({
                 Draft a WhatsApp message for the top new leads each run (in the Outreach tab, ready to send).
               </p>
             </div>
-            <Switch checked={autoDraft} onCheckedChange={setAutoDraft} />
+            <Switch aria-label="Auto-draft outreach" checked={autoDraft} onCheckedChange={setAutoDraft} />
           </div>
 
           <div className="flex flex-wrap gap-2 border-t pt-4">
