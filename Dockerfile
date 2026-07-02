@@ -8,8 +8,23 @@ RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /v
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Build the app. NEXT_PUBLIC_* env vars are inlined here, so they must be set
-# in Coolify BEFORE the build. Pages are force-dynamic, so no DB is needed to build.
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so they
+# must be present during `next build`. Coolify passes env vars marked as
+# "Build Variable" as --build-arg; these ARGs receive them and expose them as ENV.
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in"
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up"
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+ARG NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+    NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL \
+    NEXT_PUBLIC_CLERK_SIGN_UP_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_URL \
+    NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY \
+    NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+
+# Build the app. Pages are force-dynamic, so no DB is needed to build.
 COPY . .
 RUN npx prisma generate && npm run build
 
