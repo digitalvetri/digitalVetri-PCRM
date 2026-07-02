@@ -1,0 +1,693 @@
+// DigitalVetri AI Sales Intelligence Platform - Data Model
+// PostgreSQL via Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Users & Access Control
+// ============================================================
+
+enum Role {
+  ADMIN
+  MANAGER
+  SALES
+  VIEWER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String
+  imageUrl  String?
+  role      Role     @default(SALES)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignedProspects Prospect[] @relation("AssignedProspects")
+  tasks             Task[]     @relation("AssignedTasks")
+  createdTasks      Task[]     @relation("CreatedTasks")
+  activities        Activity[]
+  followUps         FollowUp[]
+  meetings          Meeting[]
+  proposals         Proposal[]
+  notes             Note[]
+
+  @@index([clerkId])
+  @@index([role])
+}
+
+// ============================================================
+// Company Intelligence
+// ============================================================
+
+enum ImportSource {
+  MANUAL
+  EXCEL
+  CSV
+  GOOGLE_MAPS
+  LINKEDIN
+  WEBSITE
+}
+
+enum DataConfidence {
+  VERIFIED // confirmed from an authoritative public source
+  ESTIMATED // AI/heuristic estimate - must be displayed as such
+  UNKNOWN
+}
+
+model Company {
+  id     String @id @default(cuid())
+  name   String
+  slug   String @unique
+  domain String?
+
+  website     String?
+  industry    String?
+  subIndustry String?
+  city        String?
+  state       String?
+  country     String? @default("India")
+  address     String?
+  latitude    Float?
+  longitude   Float?
+
+  // Estimates - always flagged with confidence so UI can distinguish
+  // verified facts from AI estimates
+  employeeEstimate    Int?
+  employeeConfidence  DataConfidence @default(UNKNOWN)
+  revenueEstimate     String? // e.g. "₹5-10 Cr"
+  revenueConfidence   DataConfidence @default(UNKNOWN)
+
+  products          String[]
+  services          String[]
+  technologyStack   String[]
+  socialMedia       Json? // { linkedin, facebook, instagram, twitter, youtube }
+  manufacturingType String?
+  departments       String[]
+
+  googleRating     Float?
+  googleReviews    Int?
+  linkedinUrl      String?
+  linkedinPresence Boolean @default(false)
+
+  phone       String?
+  publicEmail String?
+  gstNumber   String? // only if publicly available
+
+  importSource ImportSource @default(MANUAL)
+  sourceUrl    String? // original Maps/LinkedIn/website URL used for import
+  rawImportData Json? // untouched import payload for audit
+
+  analyzedAt DateTime? // last AI analysis run
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  analysis         CompanyAnalysis?
+  prospect         Prospect?
+  decisionMakers   DecisionMaker[]
+  leadIntelligence LeadIntelligence?
+  recommendation   CrmRecommendation?
+  meetings         Meeting[]
+  proposals        Proposal[]
+  generatedContent GeneratedContent[]
+  activities       Activity[]
+  notes            Note[]
+
+  @@index([industry])
+  @@index([city])
+  @@index([state])
+  @@index([name])
+  @@index([createdAt])
+}
+
+// Decision makers - stored ONLY when publicly available (company website,
+// public LinkedIn page, published directories)
+model DecisionMaker {
+  id          String  @id @default(cuid())
+  companyId   String
+  name        String
+  designation String?
+  linkedinUrl String?
+  email       String? // public email only
+  phone       String? // public phone only
+  isPrimary   Boolean @default(false)
+  source      String? // where this was publicly found
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+// ============================================================
+// AI Company Analysis (scores are ESTIMATES by definition)
+// ============================================================
+
+enum LeadGrade {
+  A_PLUS
+  A
+  B
+  C
+}
+
+enum Priority {
+  URGENT
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model CompanyAnalysis {
+  id        String @id @default(cuid())
+  companyId String @unique
+
+  businessSummary String
+
+  digitalMaturityScore Int // 0-100
+  automationScore      Int // 0-100
+  crmOpportunityScore  Int // 0-100
+  erpOpportunityScore  Int // 0-100
+  aiOpportunityScore   Int // 0-100
+  leadScore            Int // 0-100 composite
+  leadGrade            LeadGrade
+  priority             Priority
+
+  painPoints       Json // [{ area, prediction, reasoning }]
+  suggestedModules String[]
+  expectedBudget   String? // e.g. "₹8-15 Lakh"
+  buyingProbability Int // 0-100
+
+  scoreBreakdown Json? // per-factor contributions for transparency
+  aiProvider     String? // which model generated this
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([leadGrade])
+  @@index([leadScore])
+  @@index([automationScore])
+  @@index([crmOpportunityScore])
+}
+
+// ============================================================
+// Lead Intelligence Engine (industry-based predictions)
+// ============================================================
+
+model LeadIntelligence {
+  id        String @id @default(cuid())
+  companyId String @unique
+
+  // Each entry: { likelihood: 0-100, details: string, reasoning: string }
+  businessChallenges       Json
+  manualProcesses          Json
+  excelUsage               Json
+  approvalBottlenecks      Json
+  inventoryProblems        Json
+  salesProblems            Json
+  productionDelays         Json
+  communicationProblems    Json
+  reportingProblems        Json
+  customerManagementIssues Json
+
+  overallInsight String?
+  aiProvider     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// CRM Recommendation Engine
+// ============================================================
+
+model CrmRecommendation {
+  id        String @id @default(cuid())
+  companyId String @unique
+
+  recommendedModules Json // [{ module, reason, priority }]
+  estimatedHours     Int
+  estimatedTimeline  String // e.g. "14-18 weeks"
+  estimatedTeamSize  Int
+  estimatedCost      Float // INR
+  costRange          String? // "₹8,00,000 - ₹12,00,000"
+  expectedRoi        String // e.g. "3.2x in 18 months"
+  annualSavings      Float // INR
+  savingsBreakdown   Json? // [{ area, amount, explanation }]
+
+  aiProvider String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// Prospect Pipeline
+// ============================================================
+
+enum ProspectStatus {
+  NEW
+  RESEARCHING
+  QUALIFIED
+  CONTACTED
+  MEETING_SCHEDULED
+  MEETING_DONE
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+  ON_HOLD
+  DISQUALIFIED
+}
+
+model Prospect {
+  id         String @id @default(cuid())
+  prospectId String @unique // human-friendly: DV-P-0001
+  companyId  String @unique
+
+  status       ProspectStatus @default(NEW)
+  assignedToId String?
+
+  lastContactDate   DateTime?
+  nextFollowUpDate  DateTime?
+  proposalValue     Float? // INR
+  expectedCloseDate DateTime?
+  probability       Int? // 0-100
+  lostReason        String?
+
+  syncedToCrm   Boolean   @default(false)
+  crmSyncedAt   DateTime?
+  crmExternalId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTo User?      @relation("AssignedProspects", fields: [assignedToId], references: [id])
+  followUps  FollowUp[]
+  tasks      Task[]
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([nextFollowUpDate])
+}
+
+/// A ready-to-send outreach message drafted for a lead (queued for review).
+model OutreachDraft {
+  id               String   @id @default(cuid())
+  discoveredLeadId String?
+  leadName         String
+  channel          String // EMAIL | WHATSAPP
+  toContact        String? // email or phone
+  subject          String?
+  body             String
+  status           String   @default("DRAFT") // DRAFT | SENT | DISMISSED
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// Log of an autonomous agent run (daily discovery + morning briefing), so the
+/// overnight work is observable in-app even before send-channels are wired.
+model AgentRun {
+  id         String   @id @default(cuid())
+  type       String   @default("daily") // daily | discover | digest
+  status     String   @default("SUCCESS") // SUCCESS | PARTIAL | FAILED
+  summary    String? // the briefing text
+  leadsFound Int      @default(0)
+  sent       Boolean  @default(false)
+  data       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([type])
+}
+
+enum DiscoveredLeadStatus {
+  NEW
+  QUALIFIED
+  PROMOTED
+  DISMISSED
+}
+
+/// A business discovered/qualified by the prospecting engine, kept separate
+/// from Company until it's promoted (graduates) into the pipeline.
+model DiscoveredLead {
+  id                 String               @id @default(cuid())
+  name               String
+  website            String?
+  phone              String?
+  email              String?
+  city               String?
+  state              String?
+  industry           String?
+  source             String               @default("MANUAL") // MANUAL | PLACES | SEED
+  signals            Json? // string[] of detected need signals
+  recommendedService String?
+  summary            String?
+  needScore          Int                  @default(0)
+  fitScore           Int                  @default(0)
+  totalScore         Int                  @default(0)
+  status             DiscoveredLeadStatus @default(NEW)
+  promotedCompanyId  String?
+  createdById        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([totalScore])
+  @@index([createdAt])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  companyId String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
+
+  @@index([companyId])
+  @@index([authorId])
+}
+
+// ============================================================
+// Discovery Meetings
+// ============================================================
+
+enum MeetingStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+  NO_SHOW
+}
+
+enum MeetingType {
+  DISCOVERY
+  DEMO
+  PROPOSAL_REVIEW
+  NEGOTIATION
+  KICKOFF
+  FOLLOW_UP
+}
+
+model Meeting {
+  id        String @id @default(cuid())
+  companyId String
+  userId    String
+
+  title       String
+  type        MeetingType   @default(DISCOVERY)
+  status      MeetingStatus @default(SCHEDULED)
+  scheduledAt DateTime
+  duration    Int           @default(60) // minutes
+  location    String? // or meeting link
+  agenda      String?
+  outcome     String?
+
+  // Discovery questionnaire: [{ section, questions: [{ q, answer, notes }] }]
+  questionnaire Json?
+  questionnaireIndustry String?
+  pdfUrl        String? // exported questionnaire PDF in Supabase Storage
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([userId])
+}
+
+// ============================================================
+// Proposals
+// ============================================================
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  UNDER_DISCUSSION
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Proposal {
+  id         String @id @default(cuid())
+  proposalNo String @unique // DV-PR-0001
+  companyId  String
+  userId     String
+
+  title  String
+  status ProposalStatus @default(DRAFT)
+
+  // Full structured document: { coverPage, companyOverview, currentProblems,
+  //   recommendedSolution, scope, modules, timeline, deliverables,
+  //   technology, pricing, milestones, amc, support, terms, signature }
+  content Json
+
+  totalValue Float // INR
+  amcValue   Float? // annual
+  validUntil DateTime?
+  sentAt     DateTime?
+  pdfUrl     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([status])
+  @@index([userId])
+  @@index([validUntil])
+}
+
+// ============================================================
+// Generated Content (emails + WhatsApp messages)
+// ============================================================
+
+enum ContentChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum ContentCategory {
+  COLD_OUTREACH
+  FOLLOW_UP
+  MEETING_REQUEST
+  MEETING_REMINDER
+  PROPOSAL_FOLLOW_UP
+  PROPOSAL_REMINDER
+  THANK_YOU
+  FIRST_CONTACT
+  FESTIVAL_GREETING
+  REVIEW_REQUEST
+  REFERRAL_REQUEST
+}
+
+model GeneratedContent {
+  id        String @id @default(cuid())
+  companyId String?
+
+  channel  ContentChannel
+  category ContentCategory
+  subject  String? // email only
+  body     String
+  tone     String?
+  language String @default("en")
+
+  aiProvider String?
+  isSent     Boolean   @default(false)
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([channel, category])
+}
+
+// ============================================================
+// Follow-ups & Tasks
+// ============================================================
+
+enum FollowUpStatus {
+  PENDING
+  DONE
+  SKIPPED
+  RESCHEDULED
+}
+
+enum FollowUpChannel {
+  CALL
+  EMAIL
+  WHATSAPP
+  MEETING
+  LINKEDIN
+  OTHER
+}
+
+model FollowUp {
+  id         String @id @default(cuid())
+  prospectId String
+  userId     String
+
+  dueAt   DateTime
+  channel FollowUpChannel @default(CALL)
+  status  FollowUpStatus  @default(PENDING)
+  notes   String?
+  outcome String?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([dueAt])
+  @@index([status])
+  @@index([userId])
+  @@index([prospectId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+model Task {
+  id String @id @default(cuid())
+
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  assignedToId String?
+  createdById  String
+  prospectId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignedTo User?     @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  createdBy  User      @relation("CreatedTasks", fields: [createdById], references: [id])
+  prospect   Prospect? @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([dueDate])
+  @@index([createdById])
+  @@index([prospectId])
+}
+
+// ============================================================
+// Activity Feed
+// ============================================================
+
+enum ActivityType {
+  COMPANY_IMPORTED
+  COMPANY_ANALYZED
+  PROSPECT_CREATED
+  STATUS_CHANGED
+  MEETING_SCHEDULED
+  MEETING_COMPLETED
+  PROPOSAL_CREATED
+  PROPOSAL_SENT
+  EMAIL_GENERATED
+  EMAIL_SENT
+  WHATSAPP_GENERATED
+  WHATSAPP_SENT
+  FOLLOW_UP_DONE
+  TASK_COMPLETED
+  DEAL_WON
+  DEAL_LOST
+  CRM_SYNCED
+  NOTE_ADDED
+}
+
+model Activity {
+  id        String @id @default(cuid())
+  type      ActivityType
+  userId    String?
+  companyId String?
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([companyId])
+  @@index([userId])
+}
+
+// ============================================================
+// CEO OS — Daily Command Center
+// ============================================================
+
+// One row per calendar day: morning objectives + AI hourly plan,
+// end-of-day accountability review + AI performance score.
+model DailyPlan {
+  id   String   @id @default(cuid())
+  date DateTime @unique // normalised to midnight
+
+  objectives Json // morning answers: revenue target, meetings, calls, follow-ups, proposals, BNI, deliveries, blockers
+  schedule   Json // [{ time, activity, category, why }]
+  briefing   String? // AI morning briefing text
+
+  eodReview        Json? // evening answers: revenue closed, meetings done, proposals sent, ...
+  performanceScore Int? // 0-100
+  eodSummary       String? // AI suggestions + tomorrow plan
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+// ============================================================
+// Settings & Counters
+// ============================================================
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// Sequential human-friendly IDs (DV-P-0001, DV-PR-0001)
+model Counter {
+  name  String @id
+  value Int    @default(0)
+}

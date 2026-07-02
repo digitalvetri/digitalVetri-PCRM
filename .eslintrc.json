@@ -1,0 +1,16 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "ignorePatterns": ["node_modules/", ".next/", "next-env.d.ts"],
+  "settings": {
+    "jsx-a11y": {
+      "components": {
+        "Label": "label",
+        "Input": "input",
+        "Textarea": "textarea"
+      }
+    }
+  },
+  "rules": {
+    "jsx-a11y/label-has-associated-control": ["warn", { "assert": "either" }]
+  }
+}

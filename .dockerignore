@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+build
+.git
+.env
+.env*.local
+.clerk
+.vercel
+npm-debug.log*
+yarn-debug.log*
+*.tsbuildinfo
+.DS_Store

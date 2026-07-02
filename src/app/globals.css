@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  DigitalVetri brand theme — "Refined Indigo Enterprise"
+  - primary:  indigo-blue  #3047CA  (hsl 231 62% 49%) — deep, professional, on-brand
+  - neutrals: low-saturation slate for a clean enterprise surface
+  - cream:    #F1EAD8       (hsl 43 46% 91%)          — warm neutral from the monogram
+  - brand red:#E13328       (hsl 5 72% 52%)           — the ".AI" accent
+*/
+@layer base {
+  :root {
+    --background: 220 22% 98%;
+    --foreground: 225 34% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 225 34% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 225 34% 13%;
+    --primary: 231 62% 49%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 16% 95%;
+    --secondary-foreground: 225 34% 13%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 9% 45%;
+    --accent: 231 100% 96%;
+    --accent-foreground: 231 62% 43%;
+    --destructive: 0 78% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 152 64% 37%;
+    --success-foreground: 0 0% 100%;
+    --warning: 33 90% 48%;
+    --warning-foreground: 24 10% 10%;
+    --cream: 43 46% 91%;
+    --cream-foreground: 28 28% 24%;
+    --brand-red: 5 72% 52%;
+    --brand-red-foreground: 0 0% 100%;
+    --border: 220 15% 89%;
+    --input: 220 14% 83%;
+    --ring: 231 62% 49%;
+    --radius: 0.7rem;
+    --sidebar: 228 38% 11%;
+    --sidebar-foreground: 220 16% 74%;
+    --sidebar-accent: 231 56% 24%;
+    --sidebar-accent-foreground: 231 100% 93%;
+    --sidebar-border: 228 30% 18%;
+    --chart-1: 231 64% 55%;
+    --chart-2: 187 62% 40%;
+    --chart-3: 258 60% 62%;
+    --chart-4: 33 90% 50%;
+    --chart-5: 5 72% 56%;
+  }
+
+  .dark {
+    --background: 224 24% 8%;
+    --foreground: 214 28% 92%;
+    --card: 225 22% 11%;
+    --card-foreground: 214 28% 92%;
+    --popover: 225 24% 10%;
+    --popover-foreground: 214 28% 92%;
+    --primary: 231 78% 69%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 224 20% 16%;
+    --secondary-foreground: 214 28% 92%;
+    --muted: 224 20% 15%;
+    --muted-foreground: 220 14% 65%;
+    --accent: 228 44% 21%;
+    --accent-foreground: 231 100% 88%;
+    --destructive: 0 68% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 152 58% 44%;
+    --success-foreground: 0 0% 100%;
+    --warning: 33 90% 55%;
+    --warning-foreground: 24 10% 10%;
+    --cream: 40 14% 22%;
+    --cream-foreground: 40 32% 88%;
+    --brand-red: 5 80% 66%;
+    --brand-red-foreground: 0 0% 100%;
+    --border: 224 18% 18%;
+    --input: 224 18% 22%;
+    --ring: 231 78% 69%;
+    --sidebar: 230 40% 6%;
+    --sidebar-foreground: 216 18% 72%;
+    --sidebar-accent: 231 60% 21%;
+    --sidebar-accent-foreground: 231 100% 92%;
+    --sidebar-border: 228 32% 13%;
+    --chart-1: 231 78% 70%;
+    --chart-2: 187 62% 48%;
+    --chart-3: 258 66% 70%;
+    --chart-4: 33 90% 58%;
+    --chart-5: 5 80% 66%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Soft, layered elevation for cards/surfaces (brand-tinted shadow). */
+  .shadow-card {
+    box-shadow:
+      0 1px 2px -1px hsl(226 40% 20% / 0.08),
+      0 4px 16px -4px hsl(226 40% 20% / 0.1);
+  }
+  .shadow-card-lg {
+    box-shadow:
+      0 2px 4px -2px hsl(226 40% 20% / 0.1),
+      0 12px 32px -8px hsl(226 40% 20% / 0.16);
+  }
+  /* Indigo brand gradient for hero / auth surfaces. */
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, hsl(231 62% 44%) 0%, hsl(236 66% 32%) 55%, hsl(230 52% 20%) 100%);
+  }
+  .bg-brand-mesh {
+    background-color: hsl(231 60% 44%);
+    background-image:
+      radial-gradient(at 18% 20%, hsl(236 78% 58% / 0.55) 0px, transparent 55%),
+      radial-gradient(at 82% 12%, hsl(5 72% 52% / 0.26) 0px, transparent 50%),
+      radial-gradient(at 75% 85%, hsl(228 70% 26% / 0.62) 0px, transparent 55%);
+  }
+}
+
+/* Respect the OS "reduce motion" setting: neutralize CSS animations/transitions
+   (Framer Motion is handled globally via <MotionConfig reducedMotion="user">). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
