@@ -3,6 +3,8 @@ import { withApi } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { SERVICES } from "@/lib/constants";
+import { notifyInstant } from "@/lib/notify";
+import { draftOutreachForLead } from "@/lib/ai/outreach";
 
 /**
  * PUBLIC (no auth) inbound-enquiry intake. A prospect who actually wants to buy
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
       .filter(Boolean)
       .join(" · ");
 
-    await prisma.discoveredLead.create({
+    const lead = await prisma.discoveredLead.create({
       data: {
         name: body.businessName?.trim() || body.name,
         phone: body.phone,
@@ -60,6 +62,51 @@ export async function POST(req: Request) {
         status: "QUALIFIED",
       },
     });
+
+    // Speed-to-lead: ping the owner instantly (never fails the form).
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dv-crm.online";
+    await notifyInstant(
+      `🔥 New enquiry: ${lead.name}`,
+      [
+        `${body.name} wants ${body.service}.`,
+        `Phone: ${body.phone}${body.email ? ` · Email: ${body.email}` : ""}${body.city ? ` · ${body.city}` : ""}`,
+        body.message ? `“${body.message.slice(0, 300)}”` : null,
+        `Respond now: ${appUrl}/command-center`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+
+    // Day-0 nurture: draft the first reply into the Outreach queue in the
+    // background so it's waiting, ready to send, when the owner opens the app.
+    void (async () => {
+      try {
+        const channel = body.email ? "EMAIL" : "WHATSAPP";
+        const d = await draftOutreachForLead(
+          {
+            name: lead.name,
+            city: lead.city,
+            signals: ["Inbound enquiry — they contacted us", `Wants: ${body.service}`],
+            recommendedService: body.service,
+            phone: lead.phone,
+            email: lead.email,
+          },
+          channel
+        );
+        await prisma.outreachDraft.create({
+          data: {
+            discoveredLeadId: lead.id,
+            leadName: lead.name,
+            channel,
+            toContact: d.toContact,
+            subject: d.subject,
+            body: d.body,
+          },
+        });
+      } catch (err) {
+        console.error("[enquiry] day-0 draft failed", err);
+      }
+    })();
 
     return { ok: true };
   });

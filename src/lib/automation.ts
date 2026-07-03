@@ -9,6 +9,9 @@ import { assessLead } from "@/lib/ai/lead-discovery";
 import { draftOutreachForLead } from "@/lib/ai/outreach";
 import { sendWhatsAppViaApi, isWhatsAppApiConfigured } from "@/lib/whatsapp";
 import { sendEmail, isEmailConfigured } from "@/lib/email";
+import { notifyInstant } from "@/lib/notify";
+import { istEndOfDay } from "@/lib/time";
+import { recomputeProspectNextFollowUp } from "@/lib/follow-up-sync";
 
 export interface Watchlist {
   industry: string;
@@ -252,6 +255,48 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
       }
     }
     if (drafted) notes.push(`Auto-drafted ${drafted} WhatsApp message(s) for the top new leads.`);
+  }
+
+  // Never-cold nurture sweep: any active prospect with no scheduled follow-up
+  // and no contact in the last 3 days gets one due today, so nothing in the
+  // pipeline silently dies. Capped per run to stay bounded.
+  try {
+    const staleCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const stale = await prisma.prospect.findMany({
+      where: {
+        status: { notIn: ["WON", "LOST", "DISQUALIFIED", "ON_HOLD"] },
+        followUps: { none: { status: { in: ["PENDING", "RESCHEDULED"] } } },
+        OR: [{ lastContactDate: null }, { lastContactDate: { lt: staleCutoff } }],
+      },
+      select: { id: true, assignedToId: true },
+      take: 15,
+    });
+    for (const p of stale) {
+      const owner = p.assignedToId ?? (await prisma.user.findFirst({ where: { role: "ADMIN" }, select: { id: true } }))?.id;
+      if (!owner) break;
+      await prisma.followUp.create({
+        data: {
+          prospectId: p.id,
+          userId: owner,
+          dueAt: istEndOfDay(),
+          channel: "CALL",
+          notes: "Auto-nurture: no touch in 3+ days — reach out today.",
+        },
+      });
+      await recomputeProspectNextFollowUp(prisma, p.id);
+    }
+    if (stale.length > 0) notes.push(`Nurture sweep: scheduled ${stale.length} follow-up(s) for prospects going cold.`);
+  } catch (err) {
+    console.error("[agent] nurture sweep failed", err);
+  }
+
+  // Speed-to-lead: instant push when the run produced new leads (independent
+  // of the morning digest, which may not be configured).
+  if (leadsFound > 0) {
+    await notifyInstant(
+      `💼 ${leadsFound} new lead${leadsFound === 1 ? "" : "s"} on your radar`,
+      notes.join("\n") + `\n\nOpen: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://dv-crm.online"}/command-center`
+    );
   }
 
   const digest = await buildDigest(leadsFound);

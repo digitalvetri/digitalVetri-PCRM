@@ -47,6 +47,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       });
       // Completing / rescheduling changes which follow-up is "next" for the prospect.
       await recomputeProspectNextFollowUp(tx, existing.prospectId);
+      // A completed follow-up IS a contact — stamp it so the nurture sweep's
+      // 3-day staleness clock restarts.
+      if (body.status === "DONE") {
+        await tx.prospect.update({
+          where: { id: existing.prospectId },
+          data: { lastContactDate: new Date() },
+        });
+      }
       return updated;
     });
 
