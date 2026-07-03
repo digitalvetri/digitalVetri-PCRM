@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Radar, Sparkles, Search, X, ArrowUpRight, Globe, Mail, MessageCircle, Phone } from "lucide-react";
+import { Loader2, Radar, Sparkles, Search, X, ArrowUpRight, Globe, Mail, MessageCircle, Phone, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -89,6 +89,25 @@ export function LeadRadar({
     }
   }
 
+  async function scanIntent() {
+    setDiscovering(true);
+    try {
+      const res = await fetch("/api/leads/intent", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Intent scan failed");
+      toast.success(
+        data.created > 0
+          ? `Found ${data.created} live project${data.created === 1 ? "" : "s"} asking to buy right now.`
+          : "No new buyer-intent posts since the last scan — try again later."
+      );
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Intent scan failed");
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   async function promote(id: string) {
     setBusyId(id);
     try {
@@ -147,9 +166,9 @@ export function LeadRadar({
             <Radar className="h-4 w-4 text-primary" /> Lead Radar
           </CardTitle>
           <CardDescription>
-            Find businesses that need a website, CRM or automation — the AI reads their public
-            presence, detects the gap, recommends the service and scores them. Promote the best into
-            your pipeline.
+            Two ways in: scan live marketplace posts from buyers who are hiring for software work
+            right now, or qualify local businesses — the AI reads their public presence, detects the
+            gap and scores them. Promote the best into your pipeline.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -165,8 +184,12 @@ export function LeadRadar({
             placeholder={"Paste businesses, one per line — “Name” or “Name, website”:\nSri Ganesh Textiles, sriganesh.com\nMRS Traders"}
           />
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => discover(false)} disabled={discovering}>
-              {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            <Button type="button" onClick={scanIntent} disabled={discovering}>
+              {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Scan buyers hiring now
+            </Button>
+            <Button type="button" variant="outline" onClick={() => discover(false)} disabled={discovering}>
+              <Sparkles className="h-4 w-4" />
               Qualify pasted list
             </Button>
             {placesConfigured && (
@@ -206,6 +229,9 @@ export function LeadRadar({
                     <p className="truncate font-semibold">{l.name}</p>
                     {l.source === "INBOUND" && (
                       <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400">🔥 Inbound enquiry</Badge>
+                    )}
+                    {l.source === "INTENT" && (
+                      <Badge className="bg-violet-500/15 text-violet-600 dark:text-violet-400">💼 Hiring now</Badge>
                     )}
                     {l.status === "QUALIFIED" && (
                       <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">Qualified</Badge>

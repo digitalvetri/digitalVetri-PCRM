@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCommandCenterSnapshot, targetFunnel } from "@/lib/command-center";
 import { formatINR } from "@/lib/utils";
 import { isPlacesConfigured, discoverPlaces } from "@/lib/places";
+import { scanBuyerIntent } from "@/lib/intent";
 import { assessLead } from "@/lib/ai/lead-discovery";
 import { draftOutreachForLead } from "@/lib/ai/outreach";
 import { sendWhatsAppViaApi, isWhatsAppApiConfigured } from "@/lib/whatsapp";
@@ -216,6 +217,19 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
         console.error("[agent] discovery failed", err);
         notes.push("Discovery failed (Places error).");
       }
+    }
+  }
+
+  // Buyer-intent scan — live "hiring now" project posts (no key needed). Runs
+  // whenever automation is enabled, independent of watchlists/places keys.
+  if (cfg.enabled) {
+    try {
+      const intent = await scanBuyerIntent(cfg.batchSize);
+      leadsFound += intent.created;
+      notes.push(`Buyer-intent scan: ${intent.created} live project(s) asking to buy right now.`);
+    } catch (err) {
+      console.error("[agent] intent scan failed", err);
+      notes.push("Buyer-intent scan failed.");
     }
   }
 
