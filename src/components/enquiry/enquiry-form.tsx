@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 const field =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
-export function EnquiryForm() {
+export function EnquiryForm({ defaultService = "" }: { defaultService?: string }) {
   const [status, setStatus] = React.useState<"idle" | "sending" | "done">("idle");
   const [error, setError] = React.useState<string | null>(null);
 
@@ -89,7 +89,7 @@ export function EnquiryForm() {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="service">What do you need? *</Label>
-          <select id="service" name="service" required defaultValue="" className={field}>
+          <select id="service" name="service" required defaultValue={defaultService} className={field}>
             <option value="" disabled>
               Select a service…
             </option>

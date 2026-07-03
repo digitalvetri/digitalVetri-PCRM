@@ -18,7 +18,12 @@ const HIGHLIGHTS = [
   { icon: Sparkles, text: "Custom CRM, ERP & business software" },
 ];
 
-export default function EnquiryPage() {
+export default async function EnquiryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ service?: string }>;
+}) {
+  const { service } = await searchParams;
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto grid max-w-6xl gap-10 px-6 py-10 lg:grid-cols-2 lg:gap-16 lg:py-20">
@@ -46,7 +51,7 @@ export default function EnquiryPage() {
 
         {/* Right — form */}
         <div className="flex flex-col justify-center">
-          <EnquiryForm />
+          <EnquiryForm defaultService={service ?? ""} />
         </div>
       </div>
     </div>
