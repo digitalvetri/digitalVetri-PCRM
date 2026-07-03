@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Radar, Sparkles, Search, X, ArrowUpRight, Globe, Mail, MessageCircle } from "lucide-react";
+import { Loader2, Radar, Sparkles, Search, X, ArrowUpRight, Globe, Mail, MessageCircle, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,8 @@ export interface DiscoveredLeadItem {
   id: string;
   name: string;
   website: string | null;
+  phone: string | null;
+  email: string | null;
   city: string | null;
   industry: string | null;
   signals: string[];
@@ -25,6 +27,7 @@ export interface DiscoveredLeadItem {
   fitScore: number;
   totalScore: number;
   status: string;
+  source: string;
 }
 
 function scoreColor(score: number): string {
@@ -201,16 +204,29 @@ export function LeadRadar({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-semibold">{l.name}</p>
+                    {l.source === "INBOUND" && (
+                      <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400">🔥 Inbound enquiry</Badge>
+                    )}
                     {l.status === "QUALIFIED" && (
                       <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">Qualified</Badge>
                     )}
                   </div>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                     {[l.industry, l.city].filter(Boolean).join(" · ") || "—"}
                     {l.website && (
                       <span className="inline-flex items-center gap-1">
                         <Globe className="h-3 w-3" /> {l.website}
                       </span>
+                    )}
+                    {l.phone && (
+                      <a href={`tel:${l.phone}`} className="inline-flex items-center gap-1 hover:text-primary">
+                        <Phone className="h-3 w-3" /> {l.phone}
+                      </a>
+                    )}
+                    {l.email && (
+                      <a href={`mailto:${l.email}`} className="inline-flex items-center gap-1 hover:text-primary">
+                        <Mail className="h-3 w-3" /> {l.email}
+                      </a>
                     )}
                   </p>
                   {l.summary && <p className="mt-1.5 text-sm">{l.summary}</p>}

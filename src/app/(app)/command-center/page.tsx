@@ -73,6 +73,8 @@ export default async function CommandCenterPage() {
     id: l.id,
     name: l.name,
     website: l.website,
+    phone: l.phone,
+    email: l.email,
     city: l.city,
     industry: l.industry,
     signals: (l.signals ?? []) as string[],
@@ -82,6 +84,7 @@ export default async function CommandCenterPage() {
     fitScore: l.fitScore,
     totalScore: l.totalScore,
     status: l.status,
+    source: l.source,
   }));
 
   const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);
