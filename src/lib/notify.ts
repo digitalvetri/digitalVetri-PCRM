@@ -21,15 +21,12 @@ async function notifyNtfy(title: string, message: string): Promise<void> {
   const topic = process.env.NTFY_TOPIC;
   if (!topic) return;
   try {
-    await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
+    // JSON publish (not headers) — HTTP headers are latin-1 only and would
+    // reject emoji in the title.
+    await fetch("https://ntfy.sh", {
       method: "POST",
-      headers: {
-        Title: title,
-        Priority: "high",
-        Tags: "moneybag",
-        "Content-Type": "text/plain; charset=utf-8",
-      },
-      body: message,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic, title, message, priority: 4, tags: ["moneybag"] }),
       signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
