@@ -226,7 +226,9 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
     try {
       const intent = await scanBuyerIntent(cfg.batchSize);
       leadsFound += intent.created;
-      notes.push(`Buyer-intent scan: ${intent.created} live project(s) asking to buy right now.`);
+      notes.push(
+        `Buyer-intent scan (${intent.sources.join(", ")}): ${intent.created} live “hiring now” post(s) you can contact free.`
+      );
     } catch (err) {
       console.error("[agent] intent scan failed", err);
       notes.push("Buyer-intent scan failed.");
