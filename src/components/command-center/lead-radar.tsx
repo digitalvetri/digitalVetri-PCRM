@@ -28,6 +28,7 @@ export interface DiscoveredLeadItem {
   totalScore: number;
   status: string;
   source: string;
+  utmCampaign: string | null;
 }
 
 function scoreColor(score: number): string {
@@ -232,6 +233,9 @@ export function LeadRadar({
                     )}
                     {l.source === "INTENT" && (
                       <Badge className="bg-violet-500/15 text-violet-600 dark:text-violet-400">💼 Hiring now</Badge>
+                    )}
+                    {l.utmCampaign && (
+                      <Badge className="bg-sky-500/15 text-sky-600 dark:text-sky-400">📣 Ad: {l.utmCampaign}</Badge>
                     )}
                     {l.status === "QUALIFIED" && (
                       <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">Qualified</Badge>

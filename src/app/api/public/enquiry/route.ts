@@ -22,6 +22,9 @@ const schema = z.object({
   message: z.string().trim().max(2000).optional().or(z.literal("")),
   // Honeypot: real users leave this empty; bots fill it.
   company_website: z.string().max(0).optional().or(z.literal("")),
+  // Ad attribution (hidden fields fed from the landing URL's UTM params).
+  utmSource: z.string().trim().max(80).optional().or(z.literal("")),
+  utmCampaign: z.string().trim().max(120).optional().or(z.literal("")),
 });
 
 export async function POST(req: Request) {
@@ -54,7 +57,13 @@ export async function POST(req: Request) {
         source: "INBOUND",
         recommendedService: body.service,
         summary: `Inbound enquiry from ${body.name}. ${contactBits}`,
-        signals: ["Inbound enquiry", "Actively looking to buy"],
+        signals: [
+          "Inbound enquiry",
+          "Actively looking to buy",
+          ...(body.utmCampaign ? [`Via ad campaign: ${body.utmCampaign}`] : []),
+        ],
+        utmSource: body.utmSource || undefined,
+        utmCampaign: body.utmCampaign || undefined,
         // Inbound = high intent: qualify it and score it high so it surfaces first.
         needScore: 90,
         fitScore: 80,

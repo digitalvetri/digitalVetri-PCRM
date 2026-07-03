@@ -11,7 +11,15 @@ import { Label } from "@/components/ui/label";
 const field =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
-export function EnquiryForm({ defaultService = "" }: { defaultService?: string }) {
+export function EnquiryForm({
+  defaultService = "",
+  utmSource = "",
+  utmCampaign = "",
+}: {
+  defaultService?: string;
+  utmSource?: string;
+  utmCampaign?: string;
+}) {
   const [status, setStatus] = React.useState<"idle" | "sending" | "done">("idle");
   const [error, setError] = React.useState<string | null>(null);
 
@@ -31,6 +39,9 @@ export function EnquiryForm({ defaultService = "" }: { defaultService?: string }
       if (!res.ok) throw new Error(json.error ?? "Something went wrong. Please try again.");
       setStatus("done");
       form.reset();
+      // Report the conversion to Meta so ad delivery optimizes for real leads.
+      const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq;
+      fbq?.("track", "Lead");
     } catch (err) {
       setStatus("idle");
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -65,6 +76,9 @@ export function EnquiryForm({ defaultService = "" }: { defaultService?: string }
         className="hidden"
         aria-hidden="true"
       />
+      {/* Ad attribution — carried from the landing URL's UTM params. */}
+      <input type="hidden" name="utmSource" value={utmSource} />
+      <input type="hidden" name="utmCampaign" value={utmCampaign} />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">

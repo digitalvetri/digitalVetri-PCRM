@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Sparkles, Globe, Bot, TrendingUp } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { EnquiryForm } from "@/components/enquiry/enquiry-form";
+import { MetaPixel } from "@/components/marketing/meta-pixel";
 
 export const metadata: Metadata = {
   title: "Get a free consultation",
@@ -21,11 +22,12 @@ const HIGHLIGHTS = [
 export default async function EnquiryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ service?: string }>;
+  searchParams: Promise<{ service?: string; utm_source?: string; utm_campaign?: string }>;
 }) {
-  const { service } = await searchParams;
+  const { service, utm_source, utm_campaign } = await searchParams;
   return (
     <div className="min-h-screen bg-background">
+      <MetaPixel />
       <div className="mx-auto grid max-w-6xl gap-10 px-6 py-10 lg:grid-cols-2 lg:gap-16 lg:py-20">
         {/* Left — pitch */}
         <div className="flex flex-col justify-center">
@@ -51,7 +53,11 @@ export default async function EnquiryPage({
 
         {/* Right — form */}
         <div className="flex flex-col justify-center">
-          <EnquiryForm defaultService={service ?? ""} />
+          <EnquiryForm
+            defaultService={service ?? ""}
+            utmSource={utm_source ?? ""}
+            utmCampaign={utm_campaign ?? ""}
+          />
         </div>
       </div>
     </div>

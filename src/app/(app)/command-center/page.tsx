@@ -85,6 +85,7 @@ export default async function CommandCenterPage() {
     totalScore: l.totalScore,
     status: l.status,
     source: l.source,
+    utmCampaign: l.utmCampaign,
   }));
 
   const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);

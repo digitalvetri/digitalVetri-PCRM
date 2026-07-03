@@ -373,6 +373,11 @@ model DiscoveredLead {
   promotedCompanyId  String?
   createdById        String?
 
+  // Ad attribution (from /enquiry UTM params) — which paid campaign brought
+  // this lead, so spend can be joined to actual CRM leads for true CPL.
+  utmSource   String?
+  utmCampaign String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

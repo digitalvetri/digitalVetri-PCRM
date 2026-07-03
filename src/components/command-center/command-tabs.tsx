@@ -45,6 +45,7 @@ import {
   type AgentRunItem,
 } from "@/components/command-center/automation-panel";
 import { OutreachQueue, type OutreachDraftItem } from "@/components/command-center/outreach-queue";
+import { AdsPanel } from "@/components/command-center/ads-panel";
 import { cn } from "@/lib/utils";
 import { INDUSTRIES } from "@/lib/constants";
 import type {
@@ -188,6 +189,7 @@ export function CommandTabs({
         <TabsTrigger value="radar">Lead Radar</TabsTrigger>
         <TabsTrigger value="outreach">Outreach</TabsTrigger>
         <TabsTrigger value="agent">Agent</TabsTrigger>
+        <TabsTrigger value="ads">Ads</TabsTrigger>
         <TabsTrigger value="plan">Daily Plan</TabsTrigger>
         <TabsTrigger value="review">EOD Review</TabsTrigger>
         <TabsTrigger value="sales">Sales Coach</TabsTrigger>
@@ -204,6 +206,9 @@ export function CommandTabs({
       </TabsContent>
       <TabsContent value="agent" forceMount className="mt-4 data-[state=inactive]:hidden">
         <AutomationPanel config={automation} recentRuns={agentRuns} placesConfigured={placesConfigured} />
+      </TabsContent>
+      <TabsContent value="ads" forceMount className="mt-4 data-[state=inactive]:hidden">
+        <AdsPanel />
       </TabsContent>
       {/* forceMount + hidden keeps each tab's state alive while switching */}
       <TabsContent value="plan" forceMount className="mt-4 data-[state=inactive]:hidden">

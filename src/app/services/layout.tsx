@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { Logo } from "@/components/shared/logo";
 import { Button } from "@/components/ui/button";
+import { MetaPixel } from "@/components/marketing/meta-pixel";
 
 /** Public marketing chrome — light header + footer around the service pages. */
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
+      <MetaPixel />
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Link href="/services" aria-label="DigitalVetri services">
