@@ -143,12 +143,21 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
 
   if (cfg.enabled && cfg.watchlists.length > 0) {
     if (!isPlacesConfigured()) {
-      notes.push("Discovery skipped — GOOGLE_PLACES_API_KEY not set (no data source).");
+      notes.push("Discovery skipped — no places key set (GEOAPIFY_API_KEY or GOOGLE_PLACES_API_KEY).");
     } else {
       const wl = cfg.watchlists[new Date().getDate() % cfg.watchlists.length];
       try {
-        const found = await discoverPlaces(`${wl.industry} in ${wl.city}`, cfg.batchSize);
-        for (const b of found.slice(0, cfg.batchSize)) {
+        // Pull a wider candidate pool so we can filter down to REACHABLE leads.
+        const found = await discoverPlaces(`${wl.industry} in ${wl.city}`, cfg.batchSize * 5);
+        let skippedUnreachable = 0;
+        for (const b of found) {
+          if (leadsFound >= cfg.batchSize) break;
+          // Reachability pre-filter: a business with neither a phone nor a
+          // website can't be contacted or enriched — skip it without an AI call.
+          if (!b.phone && !b.website) {
+            skippedUnreachable++;
+            continue;
+          }
           const [dupLead, dupCo] = await Promise.all([
             prisma.discoveredLead.findFirst({ where: { name: { equals: b.name, mode: "insensitive" } } }),
             prisma.company.findFirst({ where: { name: { equals: b.name, mode: "insensitive" } } }),
@@ -156,11 +165,20 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
           if (dupLead || dupCo) continue;
           try {
             const a = await assessLead({ ...b, industry: wl.industry, city: b.city ?? wl.city });
+            // Enrich contacts: prefer the map's phone, else one scraped from the site.
+            const phone = b.phone ?? a.phone ?? null;
+            const email = a.email ?? null;
+            // Must have a real contact path after enrichment (phone, email or site).
+            if (!phone && !email && !b.website) {
+              skippedUnreachable++;
+              continue;
+            }
             const created = await prisma.discoveredLead.create({
               data: {
                 name: b.name,
                 website: b.website ?? undefined,
-                phone: b.phone ?? undefined,
+                phone: phone ?? undefined,
+                email: email ?? undefined,
                 city: b.city ?? wl.city,
                 industry: wl.industry,
                 source: "PLACES",
@@ -189,7 +207,11 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
             console.error("[agent] assess failed", b.name, err);
           }
         }
-        notes.push(`Discovered ${leadsFound} new lead(s) for “${wl.industry} in ${wl.city}”.`);
+        notes.push(
+          `Discovered ${leadsFound} reachable lead(s) for “${wl.industry} in ${wl.city}”` +
+            (skippedUnreachable ? ` (skipped ${skippedUnreachable} with no contact info)` : "") +
+            "."
+        );
       } catch (err) {
         console.error("[agent] discovery failed", err);
         notes.push("Discovery failed (Places error).");

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { generateJSON } from "@/lib/ai/provider";
 import { gatherPublicText } from "@/lib/import";
+import { extractContacts } from "@/lib/enrich";
 import { ANALYST_SYSTEM, KNOWN_SERVICES } from "@/lib/ai/prompts";
 
 export interface LeadInput {
@@ -27,6 +28,8 @@ export interface LeadAssessment {
   fitScore: number; // 0-100 ICP match
   totalScore: number; // blended
   hasWebsite: boolean;
+  email: string | null; // scraped from the public site (best-effort)
+  phone: string | null; // scraped from the public site (best-effort)
 }
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n || 0)));
@@ -39,8 +42,18 @@ const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n || 0)));
  * signal, so this works even when the business has no site at all.
  */
 export async function assessLead(input: LeadInput): Promise<LeadAssessment> {
-  const publicText = input.website ? await gatherPublicText(input.website) : null;
+  // Resilient scrape: a fetch failure must not sink the whole assessment (a
+  // missing site is itself the strongest "needs a website" signal).
+  let publicText: string | null = null;
+  if (input.website) {
+    try {
+      publicText = await gatherPublicText(input.website);
+    } catch {
+      publicText = null;
+    }
+  }
   const hasWebsite = Boolean(publicText && publicText.length > 200);
+  const contacts = publicText ? extractContacts(publicText) : { email: null, phone: null };
 
   const prompt = `You are prospecting for DigitalVetri, an Indian tech company offering: ${KNOWN_SERVICES}.
 Assess this business as a potential client — identify which service(s) they most need, backed by evidence.
@@ -78,5 +91,7 @@ Identify concrete NEED signals from the evidence, e.g.: "No website", "Not mobil
     fitScore,
     totalScore,
     hasWebsite,
+    email: contacts.email,
+    phone: contacts.phone,
   };
 }
