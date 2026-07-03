@@ -137,8 +137,10 @@ export function AutomationPanel({
             </Button>
             {!placesConfigured && (
               <p className="text-xs text-muted-foreground">
-                Auto-discovery needs <code className="rounded bg-muted px-1">GOOGLE_PLACES_API_KEY</code>. Without it,
-                the agent still sends your morning briefing.
+                Auto-discovery needs a places key —{" "}
+                <code className="rounded bg-muted px-1">GEOAPIFY_API_KEY</code> (free, no card) or{" "}
+                <code className="rounded bg-muted px-1">GOOGLE_PLACES_API_KEY</code>. Without one, the
+                agent still sends your morning briefing.
               </p>
             )}
           </div>
