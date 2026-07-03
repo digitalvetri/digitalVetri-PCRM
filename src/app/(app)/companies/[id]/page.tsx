@@ -24,6 +24,7 @@ import { ScoreBar, ScoreRing } from "@/components/shared/score";
 import { ConfidenceBadge, EstimateNote } from "@/components/shared/confidence-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AnalyzeButton, AddToProspectsButton } from "@/components/companies/analyze-button";
+import { ServicePicker } from "@/components/companies/service-picker";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, roleCan } from "@/lib/rbac";
 import { NotesPanel } from "@/components/shared/notes-panel";
@@ -172,6 +173,18 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               <GradeBadge grade={a.leadGrade} />
             </span>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Target services</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Which DigitalVetri service(s) are you pursuing this client for?
+          </p>
+          <ServicePicker companyId={company.id} initial={company.targetServices} editable={canWriteNotes} />
         </CardContent>
       </Card>
 

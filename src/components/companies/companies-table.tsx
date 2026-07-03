@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Company, CompanyAnalysis, DecisionMaker, Prospect } from "@prisma/client";
-import { MoreHorizontal, Search, Building2, ExternalLink } from "lucide-react";
+import { MoreHorizontal, Search, Building2, ExternalLink, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -44,14 +44,21 @@ export type CompanyRow = Company & {
 
 const ALL = "ALL";
 
+/** Trim the parenthetical from long service names for compact chips. */
+function shortService(s: string): string {
+  return s.replace(/\s*\(.*\)$/, "");
+}
+
 export function CompaniesTable({
   companies,
   industries,
   cities,
+  canDelete = false,
 }: {
   companies: CompanyRow[];
   industries: string[];
   cities: string[];
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [search, setSearch] = React.useState("");
@@ -106,6 +113,26 @@ export function CompaniesTable({
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add prospect");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function deleteCompany(c: CompanyRow) {
+    if (!window.confirm(`Delete ${c.name}? This also removes its prospect, notes and follow-ups. This cannot be undone.`)) {
+      return;
+    }
+    setBusyId(c.id);
+    try {
+      const res = await fetch(`/api/companies/${c.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Failed to delete");
+      }
+      toast.success(`${c.name} deleted.`);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
     } finally {
       setBusyId(null);
     }
@@ -206,6 +233,18 @@ export function CompaniesTable({
                             {c.website.replace(/^https?:\/\//, "")}
                           </p>
                         )}
+                        {c.targetServices.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {c.targetServices.map((s) => (
+                              <span
+                                key={s}
+                                className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                              >
+                                {shortService(s)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -277,6 +316,17 @@ export function CompaniesTable({
                           <DropdownMenuItem onSelect={() => addToProspects(c)}>
                             Add to Prospects
                           </DropdownMenuItem>
+                          {canDelete && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onSelect={() => deleteCompany(c)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

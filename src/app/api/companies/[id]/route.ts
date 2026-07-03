@@ -4,6 +4,7 @@ import { requireUser, ApiError } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { userCardSelect } from "@/lib/selects";
 import { logActivity } from "@/lib/activity";
+import { SERVICES } from "@/lib/constants";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   return withApi(async () => {
@@ -40,6 +41,7 @@ const updateSchema = z.object({
   gstNumber: z.string().nullable().optional(),
   employeeEstimate: z.number().nullable().optional(),
   revenueEstimate: z.string().nullable().optional(),
+  targetServices: z.array(z.string()).optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -47,6 +49,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     await requireUser("companies.edit");
     const { id } = await params;
     const data = updateSchema.parse(await req.json());
+    // Keep only recognised services (guards against arbitrary values).
+    if (data.targetServices) {
+      data.targetServices = data.targetServices.filter((s) => (SERVICES as readonly string[]).includes(s));
+    }
     const company = await prisma.company.update({ where: { id }, data });
     return { company };
   });

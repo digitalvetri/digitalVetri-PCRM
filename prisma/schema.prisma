@@ -89,6 +89,8 @@ model Company {
 
   products          String[]
   services          String[]
+  // DigitalVetri services we are pursuing this client for (from the SERVICES list).
+  targetServices    String[]
   technologyStack   String[]
   socialMedia       Json? // { linkedin, facebook, instagram, twitter, youtube }
   manufacturingType String?

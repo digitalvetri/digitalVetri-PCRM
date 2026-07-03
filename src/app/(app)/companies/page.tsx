@@ -6,12 +6,15 @@ import { CompaniesTable } from "@/components/companies/companies-table";
 import { ImportDialog } from "@/components/companies/import-dialog";
 import { AddCompanyDialog } from "@/components/companies/add-company-dialog";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser, roleCan } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Companies" };
 
 export default async function CompaniesPage() {
+  const currentUser = await getCurrentUser();
+  const canDelete = currentUser ? roleCan(currentUser.role, "companies.delete") : false;
   const [companies, total, analysed, topGrades, scoreAgg] = await Promise.all([
     prisma.company.findMany({
       include: {
@@ -56,7 +59,7 @@ export default async function CompaniesPage() {
 
       <EstimateNote />
 
-      <CompaniesTable companies={companies} industries={industries} cities={cities} />
+      <CompaniesTable companies={companies} industries={industries} cities={cities} canDelete={canDelete} />
     </div>
   );
 }
