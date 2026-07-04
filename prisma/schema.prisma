@@ -328,6 +328,19 @@ model OutreachDraft {
   @@index([createdAt])
 }
 
+/// A connected Meta ad account — the agency's own or a client's — for in-app
+/// campaign reporting and AI analysis. The access token (an ads_read
+/// system-user token) is server-only and never returned to the browser.
+model AdConnection {
+  id          String   @id @default(cuid())
+  name        String // e.g. "DigitalVetri (own)" or the client's business name
+  adAccountId String // "act_..." (normalized on save)
+  accessToken String
+  currency    String? // detected from the account on connect
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 /// Log of an autonomous agent run (daily discovery + morning briefing), so the
 /// overnight work is observable in-app even before send-channels are wired.
 model AgentRun {

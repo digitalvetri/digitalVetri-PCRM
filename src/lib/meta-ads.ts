@@ -39,12 +39,41 @@ const LEAD_ACTION_TYPES = new Set([
   "leadgen_grouped",
 ]);
 
+export function normalizeAdAccountId(id: string): string {
+  const trimmed = id.trim();
+  return trimmed.startsWith("act_") ? trimmed : `act_${trimmed}`;
+}
+
+/**
+ * Validate an ad account + token pair by reading the account's basic fields.
+ * Throws with Meta's error message when the token/id is wrong; returns the
+ * account's name and currency when it works.
+ */
+export async function validateAdAccount(
+  adAccountId: string,
+  accessToken: string
+): Promise<{ accountName: string; currency: string }> {
+  const account = normalizeAdAccountId(adAccountId);
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/${account}?fields=name,currency&access_token=${encodeURIComponent(accessToken)}`,
+    { signal: AbortSignal.timeout(20_000) }
+  );
+  const data = (await res.json().catch(() => null)) as
+    | { name?: string; currency?: string; error?: { message?: string } }
+    | null;
+  if (!res.ok || !data || data.error) {
+    throw new Error(data?.error?.message ?? `Meta API error (HTTP ${res.status})`);
+  }
+  return { accountName: data.name ?? account, currency: data.currency ?? "INR" };
+}
+
 export async function fetchCampaignInsights(
+  adAccountId: string,
+  accessToken: string,
   datePreset: string = "last_30d"
 ): Promise<CampaignInsight[]> {
-  const token = process.env.META_ACCESS_TOKEN!;
-  let account = process.env.META_AD_ACCOUNT_ID!.trim();
-  if (!account.startsWith("act_")) account = `act_${account}`;
+  const token = accessToken;
+  const account = normalizeAdAccountId(adAccountId);
 
   const params = new URLSearchParams({
     level: "campaign",

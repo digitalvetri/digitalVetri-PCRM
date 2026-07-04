@@ -23,6 +23,8 @@ const bodySchema = z.object({
     )
     .min(1)
     .max(50),
+  accountName: z.string().trim().max(120).optional(),
+  currency: z.string().trim().max(8).optional(),
 });
 
 const analysisSchema = z.object({
@@ -35,12 +37,14 @@ export async function POST(req: Request) {
   return withApi(async () => {
     const user = await requireUser("commandCenter.manage");
     enforceRateLimit(`ads:analyze:${user.id}`, 4, 60_000);
-    const { campaigns } = bodySchema.parse(await req.json());
+    const { campaigns, accountName, currency } = bodySchema.parse(await req.json());
 
     const r = await generateJSON(
-      `You are a performance-marketing expert advising DigitalVetri, a Coimbatore software & digital agency running Meta (Facebook/Instagram) ads to get clients for websites, digital marketing, AI automation, CRM/ERP and custom software. Currency is INR.
+      `You are a performance-marketing expert advising DigitalVetri, a Coimbatore software & digital agency. They run Meta (Facebook/Instagram) ads for their own lead generation AND manage campaigns for clients.
 
-Last-30-day campaign data (crmLeads = enquiries that actually reached their CRM; that is the number that matters — metaLeads is Meta's own count):
+This analysis is for the ad account: ${accountName ?? "DigitalVetri (own)"} (currency ${currency ?? "INR"}).
+
+Last-30-day campaign data (crmLeads = enquiries that reached DigitalVetri's own CRM — only meaningful for their own campaigns; for client accounts rely on metaLeads):
 ${JSON.stringify(campaigns, null, 2)}
 
 Benchmarks for Indian local-service lead-gen: CTR under 1% = weak creative; CPC above ₹30 = poor targeting/creative; a good cost per real lead is ₹150–₹500. If crmLeads is 0 while clicks are healthy, suspect the landing page, form friction, or missing UTM tagging.
