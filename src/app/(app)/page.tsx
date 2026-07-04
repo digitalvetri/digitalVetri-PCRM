@@ -23,6 +23,7 @@ import {
   ColumnChart,
   VerticalBarChart,
   SalesFunnelChart,
+  TrendAreaChart,
 } from "@/components/charts/charts";
 import { ScoreBar } from "@/components/shared/score";
 import { formatINR, relativeTime, formatDate } from "@/lib/utils";
@@ -36,6 +37,8 @@ import {
   getRecentActivities,
 } from "@/lib/queries";
 import { getRecurringSnapshot, getRenewalsDue } from "@/lib/recurring";
+import { getRevenueHistory, getRevenueSummary } from "@/lib/revenue";
+import { Landmark } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +57,10 @@ export default async function DashboardPage() {
       getRecurringSnapshot(),
       getRenewalsDue(45),
     ]);
+  const [revenueHistory, revenueSummary] = await Promise.all([
+    getRevenueHistory(6),
+    getRevenueSummary(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -102,6 +109,14 @@ export default async function DashboardPage() {
           hint={`${recurring.activeContracts} active · ${formatINR(recurring.arr, true)}/yr`}
           accent="violet"
         />
+        <StatCard
+          index={11}
+          label="Outstanding"
+          value={formatINR(revenueSummary.outstanding, true)}
+          icon={Landmark}
+          hint="Invoiced, not yet paid"
+          accent="warning"
+        />
       </div>
 
       {/* Renewals due — AMC/retainer contracts coming up */}
@@ -143,6 +158,27 @@ export default async function DashboardPage() {
       )}
 
       <EstimateNote />
+
+      {/* Revenue & profit trend — from the money ledger */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle>Revenue &amp; Profit — last 6 months</CardTitle>
+          <span className="text-sm text-muted-foreground">
+            This month:{" "}
+            <b className="text-foreground">{formatINR(revenueSummary.monthRevenue, true)}</b> revenue ·{" "}
+            <b className="text-emerald-600 dark:text-emerald-400">{formatINR(revenueSummary.monthProfit, true)}</b> profit
+          </span>
+        </CardHeader>
+        <CardContent>
+          <TrendAreaChart
+            data={revenueHistory}
+            dataKeys={[
+              { key: "revenue", label: "Revenue", color: "#3047ca" },
+              { key: "profit", label: "Profit", color: "#1f9d63" },
+            ]}
+          />
+        </CardContent>
+      </Card>
 
       {/* Charts row 1 */}
       <div className="grid gap-4 lg:grid-cols-2">

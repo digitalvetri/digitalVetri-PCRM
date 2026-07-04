@@ -125,6 +125,7 @@ model Company {
   recommendation   CrmRecommendation?
   meetings         Meeting[]
   proposals        Proposal[]
+  revenueEntries   RevenueEntry[]
   generatedContent GeneratedContent[]
   activities       Activity[]
   notes            Note[]
@@ -301,6 +302,52 @@ enum ClientStatus {
   CHURNED
 }
 
+/// What a revenue entry is for.
+enum RevenueKind {
+  PROJECT
+  AMC
+  ADDON
+}
+
+/// Billing/collection state of a revenue entry.
+enum PaymentStatus {
+  DRAFT
+  INVOICED
+  PAID
+  OVERDUE
+}
+
+/// A dated money event for a client — the ledger behind month-by-month revenue,
+/// profit (amount − cost) and receivables. One row per invoice/milestone/AMC bill.
+model RevenueEntry {
+  id         String @id @default(cuid())
+  companyId  String
+  prospectId String? // which deal it came from (Phase 3 will add a Deal link)
+
+  date   DateTime // recognition date — the month this revenue belongs to
+  kind   RevenueKind   @default(PROJECT)
+  amount Float // billed (revenue), INR
+  cost   Float         @default(0) // delivery cost → profit = amount − cost
+  status PaymentStatus @default(INVOICED)
+
+  invoiceNo String?
+  dueDate   DateTime?
+  paidAt    DateTime?
+  gstAmount Float?
+  note      String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  prospect Prospect? @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([date])
+  @@index([status])
+}
+
 model Prospect {
   id         String @id @default(cuid())
   prospectId String @unique // human-friendly: DV-P-0001
@@ -336,10 +383,11 @@ model Prospect {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  assignedTo User?      @relation("AssignedProspects", fields: [assignedToId], references: [id])
-  followUps  FollowUp[]
-  tasks      Task[]
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTo     User?          @relation("AssignedProspects", fields: [assignedToId], references: [id])
+  followUps      FollowUp[]
+  tasks          Task[]
+  revenueEntries RevenueEntry[]
 
   @@index([status])
   @@index([assignedToId])

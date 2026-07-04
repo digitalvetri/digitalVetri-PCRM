@@ -38,4 +38,4 @@ EXPOSE 3000
 # On start: sync the Prisma schema to the database (idempotent — this project uses
 # `db push`, not migration files), backfill wonAt for pre-existing WON deals
 # (idempotent; failure-safe so it can never block boot), then launch Next.
-CMD ["sh", "-c", "npx prisma db push --skip-generate && (npx prisma db execute --file prisma/backfill-wonat.sql --schema prisma/schema.prisma || true) && npm run start"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && (npx prisma db execute --file prisma/backfill-wonat.sql --schema prisma/schema.prisma || true) && (npx prisma db execute --file prisma/backfill-revenue.sql --schema prisma/schema.prisma || true) && npm run start"]

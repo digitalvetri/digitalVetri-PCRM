@@ -26,6 +26,8 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { AnalyzeButton, AddToProspectsButton } from "@/components/companies/analyze-button";
 import { ServicePicker } from "@/components/companies/service-picker";
 import { RelationshipBadge } from "@/components/shared/relationship-badge";
+import { RevenuePanel } from "@/components/companies/revenue-panel";
+import { getCompanyRevenue } from "@/lib/revenue";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, roleCan } from "@/lib/rbac";
 import { NotesPanel } from "@/components/shared/notes-panel";
@@ -100,6 +102,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
   const currentUser = await getCurrentUser();
   const canWriteNotes = currentUser ? roleCan(currentUser.role, "companies.edit") : false;
   const canDeleteNotes = currentUser ? roleCan(currentUser.role, "companies.delete") : false;
+  const revenue = await getCompanyRevenue(company.id);
   const notes = company.notes.map((n) => ({ id: n.id, content: n.content, createdAt: n.createdAt.toISOString(), author: n.author }));
 
   const a = company.analysis;
@@ -189,6 +192,13 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
           <ServicePicker companyId={company.id} initial={company.targetServices} editable={canWriteNotes} />
         </CardContent>
       </Card>
+
+      <RevenuePanel
+        companyId={company.id}
+        entries={revenue.entries}
+        totals={revenue.totals}
+        canWrite={canWriteNotes}
+      />
 
       {!a ? (
         <EmptyState
