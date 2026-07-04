@@ -123,6 +123,10 @@ export default async function ProspectDetailPage({
               expectedCloseDate: toDateInput(prospect.expectedCloseDate),
               probability: prospect.probability,
               nextFollowUpDate: toDateInput(prospect.nextFollowUpDate),
+              dealType: prospect.dealType,
+              recurringAmount: prospect.recurringAmount,
+              billingCycle: prospect.billingCycle,
+              renewalDate: toDateInput(prospect.renewalDate),
             }}
           />
 

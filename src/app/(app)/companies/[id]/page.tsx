@@ -25,6 +25,7 @@ import { ConfidenceBadge, EstimateNote } from "@/components/shared/confidence-ba
 import { EmptyState } from "@/components/shared/empty-state";
 import { AnalyzeButton, AddToProspectsButton } from "@/components/companies/analyze-button";
 import { ServicePicker } from "@/components/companies/service-picker";
+import { RelationshipBadge } from "@/components/shared/relationship-badge";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, roleCan } from "@/lib/rbac";
 import { NotesPanel } from "@/components/shared/notes-panel";
@@ -115,6 +116,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         title={company.name}
         description={[company.industry, company.city].filter(Boolean).join(" · ") || "Company profile"}
       >
+        <RelationshipBadge status={company.relationship} showProspect className="self-center" />
         <AnalyzeButton
           companyId={company.id}
           companyName={company.name}

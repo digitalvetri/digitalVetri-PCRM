@@ -32,6 +32,10 @@ interface ProspectActionsProps {
     expectedCloseDate: string | null;
     probability: number | null;
     nextFollowUpDate: string | null;
+    dealType: string;
+    recurringAmount: number | null;
+    billingCycle: string | null;
+    renewalDate: string | null;
   };
   users: AssignableUser[];
   /** Whether the current user may change the assignee (prospects.assign). */
@@ -48,6 +52,10 @@ export function ProspectActions({ prospectId, synced, initial, users, canAssign 
   const probabilityId = React.useId();
   const expectedCloseDateId = React.useId();
   const nextFollowUpDateId = React.useId();
+  const dealTypeId = React.useId();
+  const recurringAmountId = React.useId();
+  const billingCycleId = React.useId();
+  const renewalDateId = React.useId();
   const [status, setStatus] = React.useState(initial.status);
   const [assignedToId, setAssignedToId] = React.useState(initial.assignedToId ?? UNASSIGNED);
   const [proposalValue, setProposalValue] = React.useState(
@@ -58,7 +66,14 @@ export function ProspectActions({ prospectId, synced, initial, users, canAssign 
     initial.probability != null ? String(initial.probability) : ""
   );
   const [nextFollowUpDate, setNextFollowUpDate] = React.useState(initial.nextFollowUpDate ?? "");
+  const [dealType, setDealType] = React.useState(initial.dealType || "ONE_TIME");
+  const [recurringAmount, setRecurringAmount] = React.useState(
+    initial.recurringAmount != null ? String(initial.recurringAmount) : ""
+  );
+  const [billingCycle, setBillingCycle] = React.useState(initial.billingCycle || "MONTHLY");
+  const [renewalDate, setRenewalDate] = React.useState(initial.renewalDate ?? "");
   const [saving, setSaving] = React.useState(false);
+  const isRecurring = dealType !== "ONE_TIME";
   const [syncing, setSyncing] = React.useState(false);
 
   async function save() {
@@ -78,6 +93,10 @@ export function ProspectActions({ prospectId, synced, initial, users, canAssign 
           expectedCloseDate: expectedCloseDate || null,
           probability: probability === "" ? null : Number(probability),
           nextFollowUpDate: nextFollowUpDate || null,
+          dealType,
+          recurringAmount: !isRecurring || recurringAmount === "" ? null : Number(recurringAmount),
+          billingCycle: isRecurring ? billingCycle : null,
+          renewalDate: isRecurring ? renewalDate || null : null,
         }),
       });
       const json = await res.json();
@@ -154,7 +173,23 @@ export function ProspectActions({ prospectId, synced, initial, users, canAssign 
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor={proposalValueId}>Proposal Value (₹)</Label>
+            <Label htmlFor={dealTypeId}>Engagement type</Label>
+            <Select value={dealType} onValueChange={setDealType}>
+              <SelectTrigger id={dealTypeId} aria-label="Engagement type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ONE_TIME">One-time project</SelectItem>
+                <SelectItem value="AMC">AMC (annual maintenance)</SelectItem>
+                <SelectItem value="RETAINER">Retainer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor={proposalValueId}>
+              {isRecurring ? "Project / setup value (₹)" : "Proposal Value (₹)"}
+            </Label>
             <Input
               id={proposalValueId}
               type="number"
@@ -197,6 +232,41 @@ export function ProspectActions({ prospectId, synced, initial, users, canAssign 
             />
           </div>
         </div>
+
+        {isRecurring && (
+          <div className="grid gap-4 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor={recurringAmountId}>Recurring amount (₹)</Label>
+              <Input
+                id={recurringAmountId}
+                type="number"
+                value={recurringAmount}
+                onChange={(e) => setRecurringAmount(e.target.value)}
+                placeholder="e.g. 5000"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={billingCycleId}>Billing cycle</Label>
+              <Select value={billingCycle} onValueChange={setBillingCycle}>
+                <SelectTrigger id={billingCycleId} aria-label="Billing cycle">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MONTHLY">Monthly</SelectItem>
+                  <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                  <SelectItem value="YEARLY">Yearly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={renewalDateId}>Renewal date</Label>
+              <Input id={renewalDateId} type="date" value={renewalDate} onChange={(e) => setRenewalDate(e.target.value)} />
+            </div>
+            <p className="text-xs text-muted-foreground sm:col-span-3">
+              Recurring deals count toward MRR once won and appear in the renewals-due list near their renewal date.
+            </p>
+          </div>
+        )}
 
         <div className="flex justify-end">
           <Button onClick={save} disabled={saving}>

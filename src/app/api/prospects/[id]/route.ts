@@ -46,6 +46,13 @@ const patchSchema = z.object({
   nextFollowUpDate: z.string().nullable().optional(),
   lastContactDate: z.string().nullable().optional(),
   lostReason: z.string().nullable().optional(),
+  // Engagement / recurring (Phase 1)
+  dealType: z.enum(["ONE_TIME", "AMC", "RETAINER"]).optional(),
+  recurringAmount: z.number().nullable().optional(),
+  billingCycle: z.enum(["MONTHLY", "QUARTERLY", "YEARLY"]).nullable().optional(),
+  contractStart: z.string().nullable().optional(),
+  contractEnd: z.string().nullable().optional(),
+  renewalDate: z.string().nullable().optional(),
 });
 
 /** PATCH /api/prospects/[id] — update pipeline fields. */
@@ -87,6 +94,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.expectedCloseDate !== undefined) data.expectedCloseDate = toDate(body.expectedCloseDate);
     if (body.nextFollowUpDate !== undefined) data.nextFollowUpDate = toDate(body.nextFollowUpDate);
     if (body.lastContactDate !== undefined) data.lastContactDate = toDate(body.lastContactDate);
+    // Engagement / recurring fields
+    if (body.dealType !== undefined) data.dealType = body.dealType;
+    if (body.recurringAmount !== undefined) data.recurringAmount = body.recurringAmount;
+    if (body.billingCycle !== undefined) data.billingCycle = body.billingCycle;
+    if (body.contractStart !== undefined) data.contractStart = toDate(body.contractStart);
+    if (body.contractEnd !== undefined) data.contractEnd = toDate(body.contractEnd);
+    if (body.renewalDate !== undefined) data.renewalDate = toDate(body.renewalDate);
 
     // Stamp the true close date on the transition into WON; clear it on the way out.
     const statusChanged = body.status !== undefined && body.status !== existing.status;
@@ -94,6 +108,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (body.status === "WON") data.wonAt = new Date();
       else if (existing.status === "WON") data.wonAt = null;
     }
+
+    // A won recurring deal makes the company an AMC client; a one-time win makes
+    // them ACTIVE. Applied inside the transaction below.
+    const wonType = (body.dealType ?? existing.dealType) as string;
+    const wonNow = statusChanged && body.status === "WON";
 
     // The edit form resends nextFollowUpDate on every save, so only touch the
     // follow-up bridge when the date VALUE actually changed — otherwise an
@@ -112,6 +131,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         data,
         include: { company: true, assignedTo: { select: userCardSelect } },
       });
+      if (wonNow) {
+        await tx.company.update({
+          where: { id: existing.companyId },
+          data: { relationship: wonType === "ONE_TIME" ? "ACTIVE" : "AMC" },
+        });
+        // Stamp clientSince only on the FIRST win (leave earlier value intact).
+        await tx.company.updateMany({
+          where: { id: existing.companyId, clientSince: null },
+          data: { clientSince: new Date() },
+        });
+      }
       if (followUpChanged) {
         await syncProspectFollowUp(
           tx,

@@ -34,6 +34,7 @@ import { ScoreBar } from "@/components/shared/score";
 import { GradeBadge, StatusBadge } from "@/components/shared/grade-badge";
 import { ConfidenceBadge } from "@/components/shared/confidence-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RelationshipBadge } from "@/components/shared/relationship-badge";
 import { LEAD_GRADES, LEAD_GRADE_LABELS } from "@/lib/constants";
 
 export type CompanyRow = Company & {
@@ -233,6 +234,7 @@ export function CompaniesTable({
                             {c.website.replace(/^https?:\/\//, "")}
                           </p>
                         )}
+                        <RelationshipBadge status={c.relationship} className="mt-1" />
                         {c.targetServices.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {c.targetServices.map((s) => (

@@ -109,6 +109,11 @@ model Company {
   sourceUrl    String? // original Maps/LinkedIn/website URL used for import
   rawImportData Json? // untouched import payload for audit
 
+  // Client lifecycle (Phase 1) — the relationship stage, distinct from the
+  // sales pipeline. Set when a prospect is won.
+  relationship ClientStatus @default(PROSPECT)
+  clientSince  DateTime? // first deal won
+
   analyzedAt DateTime? // last AI analysis run
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -273,6 +278,29 @@ enum ProspectStatus {
   DISQUALIFIED
 }
 
+/// Engagement type — a one-off project vs. recurring income (AMC / retainer).
+enum DealType {
+  ONE_TIME
+  AMC
+  RETAINER
+}
+
+/// Billing frequency for recurring deals; used to normalise to monthly (MRR).
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/// The client relationship stage, distinct from the sales pipeline status.
+enum ClientStatus {
+  PROSPECT
+  ACTIVE
+  AMC
+  DORMANT
+  CHURNED
+}
+
 model Prospect {
   id         String @id @default(cuid())
   prospectId String @unique // human-friendly: DV-P-0001
@@ -291,6 +319,15 @@ model Prospect {
   // Timestamp of the transition into WON — the true "closed" date for revenue
   // reporting. Distinct from updatedAt (which any later edit bumps).
   wonAt DateTime?
+
+  // Engagement / recurring-revenue (Phase 1). One-time uses proposalValue;
+  // AMC/RETAINER use recurringAmount + billingCycle (normalised to monthly MRR).
+  dealType        DealType      @default(ONE_TIME)
+  recurringAmount Float? // INR per billing cycle
+  billingCycle    BillingCycle?
+  contractStart   DateTime?
+  contractEnd     DateTime?
+  renewalDate     DateTime? // when this AMC/retainer next comes up for renewal
 
   syncedToCrm   Boolean   @default(false)
   crmSyncedAt   DateTime?

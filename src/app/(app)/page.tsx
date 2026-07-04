@@ -10,6 +10,8 @@ import {
   Wallet,
   TrendingUp,
   IndianRupee,
+  Repeat,
+  BellRing,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -23,7 +25,7 @@ import {
   SalesFunnelChart,
 } from "@/components/charts/charts";
 import { ScoreBar } from "@/components/shared/score";
-import { formatINR, relativeTime } from "@/lib/utils";
+import { formatINR, relativeTime, formatDate } from "@/lib/utils";
 import {
   getDashboardStats,
   getIndustryDistribution,
@@ -33,21 +35,25 @@ import {
   getOpportunityAverages,
   getRecentActivities,
 } from "@/lib/queries";
+import { getRecurringSnapshot, getRenewalsDue } from "@/lib/recurring";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  const [stats, industry, city, leadScores, funnel, opps, activities] = await Promise.all([
-    getDashboardStats(),
-    getIndustryDistribution(),
-    getCityDistribution(),
-    getLeadScoreDistribution(),
-    getSalesFunnel(),
-    getOpportunityAverages(),
-    getRecentActivities(10),
-  ]);
+  const [stats, industry, city, leadScores, funnel, opps, activities, recurring, renewals] =
+    await Promise.all([
+      getDashboardStats(),
+      getIndustryDistribution(),
+      getCityDistribution(),
+      getLeadScoreDistribution(),
+      getSalesFunnel(),
+      getOpportunityAverages(),
+      getRecentActivities(10),
+      getRecurringSnapshot(),
+      getRenewalsDue(45),
+    ]);
 
   return (
     <div className="space-y-6">
@@ -88,7 +94,53 @@ export default async function DashboardPage() {
           icon={IndianRupee}
           accent="success"
         />
+        <StatCard
+          index={10}
+          label="Recurring / month (MRR)"
+          value={formatINR(recurring.mrr, true)}
+          icon={Repeat}
+          hint={`${recurring.activeContracts} active · ${formatINR(recurring.arr, true)}/yr`}
+          accent="violet"
+        />
       </div>
+
+      {/* Renewals due — AMC/retainer contracts coming up */}
+      {renewals.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+            <BellRing className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base">Renewals due</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {renewals.map((r) => (
+                <li key={r.prospectId} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                  <Link href={`/companies/${r.companyId}`} className="min-w-0 font-medium text-primary hover:underline">
+                    {r.companyName}
+                  </Link>
+                  <div className="flex items-center gap-3 text-sm">
+                    {r.recurringAmount != null && (
+                      <span className="tabular-nums text-muted-foreground">
+                        {formatINR(r.recurringAmount, true)}
+                        {r.billingCycle ? `/${r.billingCycle.toLowerCase().replace("ly", "")}` : ""}
+                      </span>
+                    )}
+                    <span
+                      className={
+                        r.overdue
+                          ? "rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+                          : "rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400"
+                      }
+                    >
+                      {r.overdue ? "Overdue" : "Renews"} {formatDate(r.renewalDate)}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <EstimateNote />
 
