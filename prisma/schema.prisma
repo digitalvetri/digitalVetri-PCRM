@@ -119,7 +119,7 @@ model Company {
   updatedAt  DateTime  @updatedAt
 
   analysis         CompanyAnalysis?
-  prospect         Prospect?
+  prospects        Prospect[]
   decisionMakers   DecisionMaker[]
   leadIntelligence LeadIntelligence?
   recommendation   CrmRecommendation?
@@ -351,7 +351,9 @@ model RevenueEntry {
 model Prospect {
   id         String @id @default(cuid())
   prospectId String @unique // human-friendly: DV-P-0001
-  companyId  String @unique
+  // A prospect IS a deal/engagement. A company can hold many over its lifetime
+  // (website → AMC → app), so companyId is intentionally NOT unique.
+  companyId  String
 
   status       ProspectStatus @default(NEW)
   assignedToId String?
@@ -389,6 +391,7 @@ model Prospect {
   tasks          Task[]
   revenueEntries RevenueEntry[]
 
+  @@index([companyId])
   @@index([status])
   @@index([assignedToId])
   @@index([nextFollowUpDate])

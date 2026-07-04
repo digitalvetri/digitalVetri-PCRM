@@ -342,11 +342,12 @@ async function main() {
       const statuses = ["QUALIFIED", "CONTACTED", "MEETING_SCHEDULED", "PROPOSAL_SENT", "NEGOTIATION"] as const;
       const status = statuses[i];
       const value = 800000 + i * 300000;
+      const seedProspectId = `DV-P-${String(prospectSeq).padStart(4, "0")}`;
       await prisma.prospect.upsert({
-        where: { companyId: company.id },
+        where: { prospectId: seedProspectId },
         update: {},
         create: {
-          prospectId: `DV-P-${String(prospectSeq).padStart(4, "0")}`,
+          prospectId: seedProspectId,
           companyId: company.id,
           status,
           assignedToId: [sales.id, manager.id, sales.id, manager.id, sales.id][i],

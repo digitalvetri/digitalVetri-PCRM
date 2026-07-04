@@ -53,6 +53,8 @@ export function AddToProspectsButton({
   companyId,
   companyName,
   isProspect = false,
+  allowMultiple = false,
+  label,
   variant = "outline",
   size = "default",
   className,
@@ -60,6 +62,9 @@ export function AddToProspectsButton({
   companyId: string;
   companyName: string;
   isProspect?: boolean;
+  /** Allow creating an additional deal even if the company already has one. */
+  allowMultiple?: boolean;
+  label?: string;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   className?: string;
@@ -73,11 +78,13 @@ export function AddToProspectsButton({
       const res = await fetch("/api/prospects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId }),
+        body: JSON.stringify({ companyId, allowMultiple }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to add prospect");
-      toast.success(json.created ? `${companyName} added to prospects.` : `${companyName} is already a prospect.`);
+      toast.success(
+        json.created ? `New deal added for ${companyName}.` : `${companyName} is already in the pipeline.`
+      );
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add prospect");
@@ -86,10 +93,18 @@ export function AddToProspectsButton({
     }
   }
 
+  // With allowMultiple the button is always actionable (a "New deal"); otherwise
+  // it disables once the company is already a prospect.
   return (
-    <Button onClick={add} disabled={loading || isProspect} variant={variant} size={size} className={className}>
+    <Button
+      onClick={add}
+      disabled={loading || (isProspect && !allowMultiple)}
+      variant={variant}
+      size={size}
+      className={className}
+    >
       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-      {isProspect ? "In Pipeline" : "Add to Prospects"}
+      {label ?? (isProspect ? "In Pipeline" : "Add to Prospects")}
     </Button>
   );
 }

@@ -162,7 +162,7 @@ export async function getIndustryAnalysis() {
     select: {
       industry: true,
       analysis: { select: { leadScore: true } },
-      prospect: { select: { status: true, proposalValue: true } },
+      prospects: { select: { status: true, proposalValue: true } },
     },
   });
 
@@ -178,8 +178,9 @@ export async function getIndustryAnalysis() {
       entry.scoreSum += c.analysis.leadScore;
       entry.scoreCount++;
     }
-    if (c.prospect && ACTIVE_STATUSES.includes(c.prospect.status)) {
-      entry.pipelineValue += c.prospect.proposalValue ?? 0;
+    // Sum active-pipeline value across all of the company's deals.
+    for (const d of c.prospects) {
+      if (ACTIVE_STATUSES.includes(d.status)) entry.pipelineValue += d.proposalValue ?? 0;
     }
     map.set(key, entry);
   }

@@ -40,7 +40,7 @@ export async function POST(req: Request) {
           leadIntelligence: true,
           recommendation: true,
           decisionMakers: true,
-          prospect: { select: { status: true, proposalValue: true, probability: true } },
+          prospects: { select: { status: true, proposalValue: true, probability: true }, orderBy: { createdAt: "desc" }, take: 1 },
         },
       });
       if (!company) throw new ApiError(404, "Company not found");

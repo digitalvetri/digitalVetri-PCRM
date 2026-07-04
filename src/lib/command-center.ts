@@ -61,7 +61,7 @@ export async function getCommandCenterSnapshot() {
     prisma.company.count({ where: { createdAt: { gte: weekAgo } } }),
     prisma.companyAnalysis.findMany({
       where: { leadGrade: { in: ["A_PLUS", "A"] } },
-      include: { company: { select: { name: true, city: true, industry: true, prospect: { select: { status: true } } } } },
+      include: { company: { select: { name: true, city: true, industry: true, prospects: { select: { status: true }, orderBy: { createdAt: "desc" }, take: 1 } } } },
       orderBy: { leadScore: "desc" },
       take: 10,
     }),
@@ -92,7 +92,7 @@ export async function getCommandCenterSnapshot() {
       score: a.leadScore,
       city: a.company.city,
       industry: a.company.industry,
-      status: a.company.prospect?.status ?? "NOT_A_PROSPECT_YET",
+      status: a.company.prospects[0]?.status ?? "NOT_A_PROSPECT_YET",
     })),
     proposalDeadlines: proposalDeadlines.map((p) => ({
       company: p.company.name,

@@ -20,7 +20,7 @@ export default async function CompaniesPage() {
       include: {
         analysis: true,
         decisionMakers: { where: { isPrimary: true }, take: 1 },
-        prospect: true,
+        prospects: { orderBy: { createdAt: "desc" } },
       },
       orderBy: [{ analysis: { leadScore: "desc" } }, { createdAt: "desc" }],
     }),

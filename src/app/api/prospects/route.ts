@@ -73,24 +73,29 @@ export async function GET(req: Request) {
 const createSchema = z.object({
   companyId: z.string().min(1),
   assignedToId: z.string().optional().nullable(),
+  allowMultiple: z.boolean().optional(),
 });
 
 /** POST /api/prospects — qualify a company into a prospect. */
 export async function POST(req: Request) {
   return withApi(async () => {
     const user = await requireUser("prospects.edit");
-    const { companyId, assignedToId } = createSchema.parse(await req.json());
+    const { companyId, assignedToId, allowMultiple } = createSchema.parse(await req.json());
 
     // Assigning to a specific user is a manager-level action.
     if (assignedToId && !roleCan(user.role, "prospects.assign")) {
       throw new ApiError(403, "Missing permission: prospects.assign");
     }
 
-    const existing = await prisma.prospect.findUnique({
-      where: { companyId },
-      include: { company: true, assignedTo: { select: userCardSelect } },
-    });
-    if (existing) return { prospect: existing, created: false };
+    // A company can hold many deals. "Add to Prospects" (qualify once) returns
+    // the existing deal; "New deal" (allowMultiple) always creates another.
+    if (!allowMultiple) {
+      const existing = await prisma.prospect.findFirst({
+        where: { companyId },
+        include: { company: true, assignedTo: { select: userCardSelect } },
+      });
+      if (existing) return { prospect: existing, created: false };
+    }
 
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     if (!company) throw new ApiError(404, "Company not found");

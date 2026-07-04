@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     const [items, total] = await Promise.all([
       prisma.company.findMany({
         where,
-        include: { analysis: true, decisionMakers: { where: { isPrimary: true }, take: 1 }, prospect: true },
+        include: { analysis: true, decisionMakers: { where: { isPrimary: true }, take: 1 }, prospects: { orderBy: { createdAt: "desc" } } },
         orderBy: [{ analysis: { leadScore: "desc" } }, { createdAt: "desc" }],
         skip,
         take,

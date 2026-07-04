@@ -40,7 +40,7 @@ import { LEAD_GRADES, LEAD_GRADE_LABELS } from "@/lib/constants";
 export type CompanyRow = Company & {
   analysis: CompanyAnalysis | null;
   decisionMakers: DecisionMaker[];
-  prospect: Prospect | null;
+  prospects: Prospect[];
 };
 
 const ALL = "ALL";
@@ -297,7 +297,16 @@ export function CompaniesTable({
                       )}
                     </TableCell>
                     <TableCell>
-                      {c.prospect ? <StatusBadge status={c.prospect.status} /> : <span className="text-muted-foreground">—</span>}
+                      {c.prospects.length > 0 ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <StatusBadge status={c.prospects[0].status} />
+                          {c.prospects.length > 1 && (
+                            <span className="text-xs text-muted-foreground">+{c.prospects.length - 1}</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         leadIntelligence: true,
         recommendation: true,
         decisionMakers: true,
-        prospect: { include: { assignedTo: { select: userCardSelect } } },
+        prospects: { include: { assignedTo: { select: userCardSelect } }, orderBy: { createdAt: "desc" } },
         notes: { include: { author: { select: userCardSelect } }, orderBy: { createdAt: "desc" } },
         meetings: { orderBy: { scheduledAt: "desc" } },
         proposals: { orderBy: { createdAt: "desc" } },

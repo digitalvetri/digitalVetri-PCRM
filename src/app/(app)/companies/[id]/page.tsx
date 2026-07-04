@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GradeBadge } from "@/components/shared/grade-badge";
+import { GradeBadge, StatusBadge } from "@/components/shared/grade-badge";
 import { ScoreBar, ScoreRing } from "@/components/shared/score";
 import { ConfidenceBadge, EstimateNote } from "@/components/shared/confidence-badge";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -90,7 +90,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
       leadIntelligence: true,
       recommendation: true,
       decisionMakers: true,
-      prospect: true,
+      prospects: { orderBy: { createdAt: "desc" }, include: { assignedTo: { select: { id: true, name: true } } } },
       notes: { include: { author: { select: { id: true, name: true } } }, orderBy: { createdAt: "desc" } },
       meetings: { orderBy: { scheduledAt: "desc" } },
       proposals: { orderBy: { createdAt: "desc" } },
@@ -128,7 +128,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         <AddToProspectsButton
           companyId={company.id}
           companyName={company.name}
-          isProspect={Boolean(company.prospect)}
+          isProspect={company.prospects.length > 0}
         />
       </PageHeader>
 
@@ -190,6 +190,53 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
             Which DigitalVetri service(s) are you pursuing this client for?
           </p>
           <ServicePicker companyId={company.id} initial={company.targetServices} editable={canWriteNotes} />
+        </CardContent>
+      </Card>
+
+      {/* Deals & engagements — a client can hold many over their lifetime */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle className="text-base">Deals &amp; engagements</CardTitle>
+          {canWriteNotes && (
+            <AddToProspectsButton
+              companyId={company.id}
+              companyName={company.name}
+              label="New deal"
+              allowMultiple
+              size="sm"
+              variant="outline"
+            />
+          )}
+        </CardHeader>
+        <CardContent>
+          {company.prospects.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No deals yet. Add one to start tracking a project or AMC for this client.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {company.prospects.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Link href={`/prospects/${d.id}`} className="font-medium text-primary hover:underline">
+                      {d.prospectId}
+                    </Link>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {d.dealType === "AMC" ? "AMC" : d.dealType === "RETAINER" ? "Retainer" : "One-time"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="tabular-nums text-muted-foreground">
+                      {d.dealType === "ONE_TIME"
+                        ? formatINR(d.proposalValue, true)
+                        : `${formatINR(d.recurringAmount, true)}/${(d.billingCycle ?? "MONTHLY").toLowerCase().replace("ly", "")}`}
+                    </span>
+                    <StatusBadge status={d.status} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
