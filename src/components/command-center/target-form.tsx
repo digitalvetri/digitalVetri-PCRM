@@ -79,7 +79,7 @@ export function TargetForm({ current }: { current: number | null }) {
           if (e.key === "Escape") setEditing(false);
         }}
         placeholder="Monthly revenue target (₹)"
-        className="h-8 w-48"
+        className="h-8 w-full min-w-0 sm:w-48"
         autoFocus
       />
       <Button type="button" size="sm" className="h-8" onClick={save} disabled={saving}>

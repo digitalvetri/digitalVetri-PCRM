@@ -244,8 +244,8 @@ export default async function ProspectDetailPage({
                 {primaryDM.designation && (
                   <p className="text-muted-foreground">{primaryDM.designation}</p>
                 )}
-                {primaryDM.email && <p className="text-muted-foreground">{primaryDM.email}</p>}
-                {primaryDM.phone && <p className="text-muted-foreground">{primaryDM.phone}</p>}
+                {primaryDM.email && <p className="break-words text-muted-foreground">{primaryDM.email}</p>}
+                {primaryDM.phone && <p className="break-words text-muted-foreground">{primaryDM.phone}</p>}
                 {primaryDM.linkedinUrl && (
                   <a
                     href={primaryDM.linkedinUrl}

@@ -198,7 +198,7 @@ export function ProposalGenerator({ onGenerated }: { onGenerated?: () => void })
           {pricing.length > 0 && (
             <div>
               <h4 className="mb-2 text-sm font-semibold">Pricing</h4>
-              <div className="overflow-hidden rounded-lg border">
+              <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                     <tr>

@@ -96,9 +96,28 @@
   * {
     @apply border-border;
   }
+  html {
+    /* Reserve the scrollbar's width at all times so the page never jolts
+       sideways when a scrollbar appears/disappears — e.g. when a Radix dialog
+       locks body scroll, or a short page grows tall. The #1 cause of "shake". */
+    scrollbar-gutter: stable;
+    -webkit-text-size-adjust: 100%; /* stop iOS Safari from resizing text on rotate */
+    text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* Safety net: no single wide element can force horizontal page scroll.
+       `clip` (not `hidden`) doesn't create a scroll container, so sticky
+       headers keep working. */
+    overflow-x: clip;
+  }
+  /* Media never overflows its column and always reserves its box. */
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100%;
   }
 }
 

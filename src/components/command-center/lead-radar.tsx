@@ -244,18 +244,18 @@ export function LeadRadar({
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                     {[l.industry, l.city].filter(Boolean).join(" · ") || "—"}
                     {l.website && (
-                      <span className="inline-flex items-center gap-1">
-                        <Globe className="h-3 w-3" /> {l.website}
+                      <span className="inline-flex min-w-0 items-center gap-1">
+                        <Globe className="h-3 w-3 shrink-0" /> <span className="break-all">{l.website}</span>
                       </span>
                     )}
                     {l.phone && (
-                      <a href={`tel:${l.phone}`} className="inline-flex items-center gap-1 hover:text-primary">
-                        <Phone className="h-3 w-3" /> {l.phone}
+                      <a href={`tel:${l.phone}`} className="inline-flex min-w-0 items-center gap-1 hover:text-primary">
+                        <Phone className="h-3 w-3 shrink-0" /> <span className="break-all">{l.phone}</span>
                       </a>
                     )}
                     {l.email && (
-                      <a href={`mailto:${l.email}`} className="inline-flex items-center gap-1 hover:text-primary">
-                        <Mail className="h-3 w-3" /> {l.email}
+                      <a href={`mailto:${l.email}`} className="inline-flex min-w-0 items-center gap-1 hover:text-primary">
+                        <Mail className="h-3 w-3 shrink-0" /> <span className="break-all">{l.email}</span>
                       </a>
                     )}
                   </p>

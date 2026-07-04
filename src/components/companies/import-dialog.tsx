@@ -211,7 +211,7 @@ export function ImportDialog() {
         ) : (
           <>
             <Tabs defaultValue="excel">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
                 <TabsTrigger value="excel">Excel/CSV</TabsTrigger>
                 <TabsTrigger value="website">Website URL</TabsTrigger>
                 <TabsTrigger value="maps">Google Maps</TabsTrigger>

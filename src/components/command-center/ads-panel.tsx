@@ -380,10 +380,10 @@ export function AdsPanel() {
         <Card>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
-              <span className="flex items-center gap-2">
+              <span className="flex min-w-0 items-center gap-2">
                 Last 30 days
                 <Select value={source} onValueChange={setSource}>
-                  <SelectTrigger className="h-8 w-56" aria-label="Ad account to report on">
+                  <SelectTrigger className="h-8 w-full min-w-0 sm:w-56" aria-label="Ad account to report on">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

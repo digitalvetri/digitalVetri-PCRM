@@ -124,9 +124,9 @@ export function AutomationPanel({
           <div className="space-y-2">
             <p className="text-sm font-medium leading-none">Watchlists — the “industry in city” to scan</p>
             {watchlists.map((w, i) => (
-              <div key={i} className="flex gap-2">
-                <Input aria-label="Industry" placeholder="Industry (e.g. Textiles)" value={w.industry} onChange={(e) => setWl(i, "industry", e.target.value)} />
-                <Input aria-label="City" placeholder="City (e.g. Coimbatore)" value={w.city} onChange={(e) => setWl(i, "city", e.target.value)} />
+              <div key={i} className="flex flex-col gap-2 sm:flex-row">
+                <Input className="min-w-0" aria-label="Industry" placeholder="Industry (e.g. Textiles)" value={w.industry} onChange={(e) => setWl(i, "industry", e.target.value)} />
+                <Input className="min-w-0" aria-label="City" placeholder="City (e.g. Coimbatore)" value={w.city} onChange={(e) => setWl(i, "city", e.target.value)} />
                 <Button type="button" size="icon" variant="ghost" onClick={() => removeWl(i)} aria-label="Remove watchlist">
                   <Trash2 className="h-4 w-4" />
                 </Button>
