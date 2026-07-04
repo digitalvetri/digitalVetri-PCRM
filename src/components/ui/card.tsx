@@ -5,7 +5,13 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("rounded-xl border bg-card text-card-foreground shadow-card", className)}
+      className={cn(
+        // min-w-0 lets a card shrink below its content's intrinsic width inside
+        // a grid/flex track — without it, a wide child (e.g. a Recharts chart)
+        // props the whole column open and overflows the page on mobile.
+        "min-w-0 rounded-xl border bg-card text-card-foreground shadow-card",
+        className
+      )}
       {...props}
     />
   )

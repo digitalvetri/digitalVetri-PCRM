@@ -103,14 +103,16 @@
     scrollbar-gutter: stable;
     -webkit-text-size-adjust: 100%; /* stop iOS Safari from resizing text on rotate */
     text-size-adjust: 100%;
+    /* Hard stop on horizontal page scroll at the root — `clip` doesn't create a
+       scroll container, so sticky headers keep working. */
+    overflow-x: clip;
+    max-width: 100%;
   }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
-    /* Safety net: no single wide element can force horizontal page scroll.
-       `clip` (not `hidden`) doesn't create a scroll container, so sticky
-       headers keep working. */
     overflow-x: clip;
+    max-width: 100%;
   }
   /* Media never overflows its column and always reserves its box. */
   img,
@@ -118,6 +120,11 @@
   video,
   canvas {
     max-width: 100%;
+  }
+  /* Recharts' responsive container must be allowed to shrink inside grid/flex
+     tracks so charts never prop a column open past the viewport on mobile. */
+  .recharts-responsive-container {
+    min-width: 0 !important;
   }
 }
 
