@@ -43,8 +43,10 @@ const SUGGESTIONS = [
 const VOICE_KEY = "dv-ceo-voice";
 const WAKE_KEY = "dv-vetri-wake";
 const CLAP_KEY = "dv-vetri-clap";
-// The names the assistant answers to (spoken). Kept loose for recognizer slips.
-const WAKE_WORDS = ["vetri", "vetary", "vetree", "vettri", "hey vetri", "hi vetri"];
+const LANG_KEY = "dv-vetri-lang";
+type Lang = "en" | "ta";
+// The names the assistant answers to (spoken), incl. the Tamil word வெற்றி.
+const WAKE_WORDS = ["vetri", "vetary", "vetree", "vettri", "hey vetri", "hi vetri", "வெற்றி"];
 
 function stripWakeWord(text: string): string {
   let t = text.toLowerCase();
@@ -100,6 +102,8 @@ export function AiAssistant() {
   // Wake word — "Vetri" always-listening (opt-in).
   const [wakeOn, setWakeOn] = React.useState(false);
   const [clapOn, setClapOn] = React.useState(false);
+  const [lang, setLang] = React.useState<Lang>("ta");
+  const langRef = React.useRef<Lang>("ta");
   const [armed, setArmed] = React.useState(false); // heard "Vetri" / clap, capturing the question
   const wakeRecRef = React.useRef<SpeechRecognitionLike | null>(null);
   const captureRecRef = React.useRef<SpeechRecognitionLike | null>(null);
@@ -122,13 +126,24 @@ export function AiAssistant() {
     setVoiceInSupported(getSpeechCtor() !== null);
     setVoiceOutSupported(isSpeechSynthesisSupported());
     try {
-      setVoiceOn(localStorage.getItem(VOICE_KEY) === "1");
+      // Voice output + clap-to-activate default ON (opt-OUT), so Vetri responds
+      // and listens the moment you enter the app. Wake word stays opt-in (it and
+      // clap both use the mic; running one avoids contention).
+      setVoiceOn(localStorage.getItem(VOICE_KEY) !== "0");
+      setClapOn(localStorage.getItem(CLAP_KEY) !== "0");
       setWakeOn(localStorage.getItem(WAKE_KEY) === "1");
-      setClapOn(localStorage.getItem(CLAP_KEY) === "1");
+      const storedLang = localStorage.getItem(LANG_KEY);
+      const initialLang: Lang = storedLang === "en" ? "en" : "ta"; // default Tamil
+      setLang(initialLang);
+      langRef.current = initialLang;
     } catch {
-      /* localStorage blocked — default off */
+      /* localStorage blocked — use defaults */
     }
   }, []);
+
+  React.useEffect(() => {
+    langRef.current = lang;
+  }, [lang]);
 
   // Shared "arm" flow — both the wake word AND a clap trigger this: Vetri
   // wakes, greets you as boss, and captures your question.
@@ -158,7 +173,7 @@ export function AiAssistant() {
         disarm();
         sendRef.current(q, true);
       }
-    }, 1500);
+    }, 1100);
   }, [disarm]);
   // When Vetri is woken by a clap or the "Talk to Vetri" button (not the
   // always-on wake word), nothing is feeding the question buffer — so start a
@@ -167,7 +182,7 @@ export function AiAssistant() {
     const Ctor = getSpeechCtor();
     if (!Ctor) return;
     const rec = new Ctor();
-    rec.lang = "en-IN";
+    rec.lang = langRef.current === "ta" ? "ta-IN" : "en-IN";
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
@@ -202,7 +217,12 @@ export function AiAssistant() {
       setOpen(true);
       questionBufRef.current = initial;
       ignoreUntilRef.current = Date.now() + 2600; // don't hear our own greeting
-      speak("Yes boss, what should I do now?");
+      {
+        const ta = langRef.current === "ta";
+        speak(ta ? "ஆம் சார், நான் என்ன செய்யட்டும்?" : "Yes boss, what should I do now?", {
+          lang: ta ? "ta-IN" : "en-IN",
+        });
+      }
       finalizeSoon();
       // The always-on wake recognizer already feeds the buffer; only spin up a
       // capture recognizer when it isn't running (clap / button activation).
@@ -229,7 +249,7 @@ export function AiAssistant() {
     function start() {
       if (!wakeOnRef.current) return;
       const rec = new Ctor!();
-      rec.lang = "en-IN";
+      rec.lang = langRef.current === "ta" ? "ta-IN" : "en-IN";
       rec.continuous = true;
       rec.interimResults = true;
       rec.onresult = (e) => {
@@ -464,6 +484,20 @@ export function AiAssistant() {
     });
   }
 
+  function toggleLang() {
+    setLang((l) => {
+      const next: Lang = l === "ta" ? "en" : "ta";
+      try {
+        localStorage.setItem(LANG_KEY, next);
+      } catch {
+        /* ignore */
+      }
+      langRef.current = next;
+      toast.success(next === "ta" ? "வெற்றி இனி தமிழில் பேசும்." : "Vetri will speak English.");
+      return next;
+    });
+  }
+
   function toggleListening() {
     const Ctor = getSpeechCtor();
     if (!Ctor) return;
@@ -472,7 +506,7 @@ export function AiAssistant() {
       return;
     }
     const rec = new Ctor();
-    rec.lang = "en-IN";
+    rec.lang = langRef.current === "ta" ? "ta-IN" : "en-IN";
     rec.continuous = false;
     rec.interimResults = true;
     baseTextRef.current = input ? input.trimEnd() + " " : "";
@@ -516,7 +550,8 @@ export function AiAssistant() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        // Voice-triggered sends use the fast single-call path + the chosen language.
+        body: JSON.stringify({ question, fast: forceSpeak, lang }),
       });
       const data = await res.json();
       const content = data.answer ?? data.error ?? "Sorry, something went wrong.";
@@ -524,7 +559,7 @@ export function AiAssistant() {
       if (voiceOn || forceSpeak) {
         // Deafen the wake listener while the CEO talks, so it doesn't hear itself.
         ignoreUntilRef.current = Date.now() + content.split(/\s+/).length * 360 + 1500;
-        speak(content);
+        speak(content, { lang: lang === "ta" ? "ta-IN" : "en-IN" });
       }
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Network error. Please try again." }]);
@@ -635,6 +670,14 @@ export function AiAssistant() {
                 )}
               >
                 <Hand className="h-4 w-4" />
+              </button>
+              <button
+                onClick={toggleLang}
+                title={lang === "ta" ? "Vetri speaks Tamil — tap for English" : "Vetri speaks English — tap for Tamil"}
+                aria-label="Toggle language"
+                className="min-w-[28px] rounded-md px-1.5 py-1 text-xs font-bold text-blue-100 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                {lang === "ta" ? "த" : "EN"}
               </button>
             </div>
 

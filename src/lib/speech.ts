@@ -54,8 +54,17 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
   if (!clean) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(clean);
+  const target = (opts.lang ?? "en-IN").toLowerCase();
   u.lang = opts.lang ?? "en-IN";
   u.rate = opts.rate ?? 1;
+  // Explicitly select a matching installed voice — setting `lang` alone doesn't
+  // always pick e.g. a Tamil voice; without one the browser reads it poorly.
+  const short = target.split("-")[0];
+  const voices = window.speechSynthesis.getVoices();
+  const match =
+    voices.find((v) => v.lang?.toLowerCase() === target) ??
+    voices.find((v) => v.lang?.toLowerCase().startsWith(short));
+  if (match) u.voice = match;
   window.speechSynthesis.speak(u);
 }
 
