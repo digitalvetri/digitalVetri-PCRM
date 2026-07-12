@@ -16,11 +16,54 @@ import {
   type SpeechRecognitionLike,
 } from "@/lib/speech";
 
+interface ConfirmAction {
+  action: "add_company" | "record_payment";
+  params: Record<string, unknown>;
+  title: string;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
   action?: { type: "navigate"; href: string; label: string };
   speak?: string; // clean narration for text-to-speech (falls back to content)
+  confirm?: ConfirmAction; // renders Save/Cancel — a write awaiting an explicit tap
+}
+
+// Voice navigation — client-side, instant, no AI. Trigger word + a destination.
+const NAV_TRIGGERS = ["open", "go to", "goto", "show me", "show ", "navigate", "take me", "திற", "காட்டு", "போ", "செல்"];
+const NAV_MAP: { keys: string[]; href: string; label: string }[] = [
+  { keys: ["ai company", "vetri", "வெற்றி", "ஏஐ"], href: "/company", label: "AI Company" },
+  { keys: ["command center", "கமாண்ட்"], href: "/command-center", label: "Command Center" },
+  { keys: ["client", "compan", "நிறுவன", "கிளையண்ட்"], href: "/companies", label: "Clients" },
+  { keys: ["prospect", "deal", "ப்ராஸ்பெக்ட்"], href: "/prospects", label: "Prospects" },
+  { keys: ["meeting", "மீட்டிங்"], href: "/meetings", label: "Meetings" },
+  { keys: ["proposal", "ப்ரொபோசல்"], href: "/proposals", label: "Proposals" },
+  { keys: ["follow", "பாலோ"], href: "/follow-ups", label: "Follow-ups" },
+  { keys: ["task", "டாஸ்க்", "பணி"], href: "/tasks", label: "Tasks" },
+  { keys: ["calendar", "கேலண்டர்", "நாட்காட்டி"], href: "/calendar", label: "Calendar" },
+  { keys: ["report", "analytic", "ரிப்போர்ட்"], href: "/reports", label: "Reports & Analytics" },
+  { keys: ["team", "employee", "டீம்", "ஊழியர்"], href: "/team", label: "Team" },
+  { keys: ["setting", "செட்டிங்"], href: "/settings", label: "Settings" },
+  { keys: ["dashboard", "home", "முகப்பு"], href: "/", label: "Dashboard" },
+];
+function detectNav(text: string): { href: string; label: string } | null {
+  const t = text.toLowerCase().trim();
+  // Navigation is a short, terse command ("open reports"), not a sentence
+  // ("show me which deals are at risk" — that's a question to answer).
+  if (t.split(/\s+/).length > 5) return null;
+  if (!NAV_TRIGGERS.some((w) => t.includes(w))) return null;
+  for (const n of NAV_MAP) if (n.keys.some((k) => t.includes(k))) return { href: n.href, label: n.label };
+  return null;
+}
+const CMD_TRIGGERS = [
+  "add company", "new company", "onboard", "add client", "new client",
+  "payment", "received", "paid", "record ",
+  "நிறுவனம்", "கிளையண்ட்", "சேர்", "பணம்", "பேமெண்ட்", "வந்தது", "பெற்ற",
+];
+function looksLikeCommand(text: string): boolean {
+  const t = text.toLowerCase();
+  return CMD_TRIGGERS.some((w) => t.includes(w));
 }
 
 interface CeoBriefing {
@@ -88,6 +131,7 @@ export function AiAssistant() {
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [messages, setMessages] = React.useState<Message[]>([]);
+  const [savingIdx, setSavingIdx] = React.useState<number | null>(null);
   const [briefingState, setBriefingState] = React.useState<"idle" | "loading" | "done" | "error">("idle");
 
   // Voice: output (CEO talks back) is a user toggle persisted in localStorage;
@@ -539,28 +583,66 @@ export function AiAssistant() {
     }
   }
 
+  const ttsLang = lang === "ta" ? "ta-IN" : "en-IN";
+  function sayOut(text: string, force = false) {
+    if (!(voiceOn || force)) return;
+    ignoreUntilRef.current = Date.now() + text.split(/\s+/).length * 360 + 1500;
+    speak(text, { lang: ttsLang });
+  }
+
   async function send(question: string, forceSpeak = false) {
     if (!question.trim() || loading) return;
     recognitionRef.current?.stop();
     cancelSpeech();
     setInput("");
     setMessages((m) => [...m, { role: "user", content: question }]);
+
+    // 1. Navigation — instant, no AI, works from anywhere in the app.
+    const nav = detectNav(question);
+    if (nav) {
+      const say = lang === "ta" ? `${nav.label} திறக்கிறேன்.` : `Opening ${nav.label}.`;
+      setMessages((m) => [...m, { role: "assistant", content: say }]);
+      sayOut(say, forceSpeak);
+      setOpen(false);
+      router.push(nav.href);
+      return;
+    }
+
     setLoading(true);
     try {
+      // 2. Command? (add company / record payment) — extract + confirm, never auto-write.
+      if (looksLikeCommand(question)) {
+        const res = await fetch("/api/assistant/command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: question, lang }),
+        });
+        const c = await res.json();
+        if (res.ok && c.kind === "confirm") {
+          setMessages((m) => [...m, { role: "assistant", content: c.say, confirm: { action: c.action, params: c.params, title: c.title } }]);
+          sayOut(c.say, forceSpeak);
+          setLoading(false);
+          return;
+        }
+        if (res.ok && c.kind === "clarify") {
+          setMessages((m) => [...m, { role: "assistant", content: c.say }]);
+          sayOut(c.say, forceSpeak);
+          setLoading(false);
+          return;
+        }
+        // c.kind === "chat" (or error) → fall through to a normal answer.
+      }
+
+      // 3. Chat — the fast grounded answer.
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Voice-triggered sends use the fast single-call path + the chosen language.
         body: JSON.stringify({ question, fast: forceSpeak, lang }),
       });
       const data = await res.json();
       const content = data.answer ?? data.error ?? "Sorry, something went wrong.";
       setMessages((m) => [...m, { role: "assistant", content, action: data.action }]);
-      if (voiceOn || forceSpeak) {
-        // Deafen the wake listener while the CEO talks, so it doesn't hear itself.
-        ignoreUntilRef.current = Date.now() + content.split(/\s+/).length * 360 + 1500;
-        speak(content, { lang: lang === "ta" ? "ta-IN" : "en-IN" });
-      }
+      sayOut(content, forceSpeak);
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Network error. Please try again." }]);
     } finally {
@@ -569,6 +651,36 @@ export function AiAssistant() {
   }
   // Keep a stable ref so the wake recognizer always calls the latest send().
   sendRef.current = send;
+
+  async function confirmWrite(index: number) {
+    const msg = messages[index];
+    if (!msg?.confirm) return;
+    setSavingIdx(index);
+    try {
+      const res = await fetch("/api/assistant/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: msg.confirm.action, params: msg.confirm.params, lang }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't save");
+      setMessages((m) => m.map((mm, i) => (i === index ? { ...mm, confirm: undefined } : mm)));
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: data.say, action: data.href ? { type: "navigate", href: data.href, label: data.label } : undefined },
+      ]);
+      sayOut(data.say);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save");
+    } finally {
+      setSavingIdx(null);
+    }
+  }
+
+  function cancelWrite(index: number) {
+    setMessages((m) => m.map((mm, i) => (i === index ? { ...mm, confirm: undefined, content: mm.content + " (cancelled)" } : mm)));
+  }
 
   return (
     <>
@@ -707,6 +819,16 @@ export function AiAssistant() {
                     )}
                   >
                     {m.content}
+                    {m.confirm && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button size="sm" className="h-7 px-3 text-xs" onClick={() => confirmWrite(i)} disabled={savingIdx === i}>
+                          {savingIdx === i ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Save
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 px-3 text-xs" onClick={() => cancelWrite(i)} disabled={savingIdx === i}>
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                     {m.action && (
                       <button
                         onClick={() => {
