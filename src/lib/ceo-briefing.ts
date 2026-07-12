@@ -25,10 +25,16 @@ export async function computeCeoBriefing(): Promise<CeoBriefing> {
     getLatestDeptReports(),
   ]);
   const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);
+  // Only fold reports from the last 3 days into the CEO's synthesis — a stale
+  // advisory report (run once, days ago) shouldn't be narrated as if it's today's.
+  const RECENT_MS = 3 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
   return generateCeoBriefing({
     context: snapshot,
     funnel: funnel as unknown as Record<string, unknown> | null,
-    departmentReports: departmentReports.map((r) => ({
+    departmentReports: departmentReports
+      .filter((r) => now - new Date(r.createdAt).getTime() < RECENT_MS)
+      .map((r) => ({
       department: r.deptTitle,
       headline: r.report.headline,
       summary: r.report.summary,

@@ -305,7 +305,7 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
   // report first, then the CEO synthesises them all into the morning briefing.
   // Best-effort per department so one failure can't sink the run or the briefing.
   let shiftsFiled = 0;
-  for (const dept of DEPARTMENT_LIST) {
+  for (const dept of DEPARTMENT_LIST.filter((d) => d.autoShift)) {
     try {
       await runDepartmentShift(dept.key);
       shiftsFiled += 1;

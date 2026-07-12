@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crown, X, Send, Loader2, ArrowRight, Mic, Volume2, VolumeX, RefreshCw } from "lucide-react";
+import { Crown, X, Send, Loader2, ArrowRight, Mic, Volume2, VolumeX, RefreshCw, Ear, EarOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useRole } from "@/components/layout/app-shell";
@@ -41,6 +41,22 @@ const SUGGESTIONS = [
 ];
 
 const VOICE_KEY = "dv-ceo-voice";
+const WAKE_KEY = "dv-vetri-wake";
+// The names the assistant answers to (spoken). Kept loose for recognizer slips.
+const WAKE_WORDS = ["vetri", "vetary", "vetree", "vettri", "hey vetri", "hi vetri"];
+
+function stripWakeWord(text: string): string {
+  let t = text.toLowerCase();
+  for (const w of WAKE_WORDS) {
+    const idx = t.indexOf(w);
+    if (idx !== -1) return text.slice(idx + w.length).replace(/^[\s,.:!?-]+/, "").trim();
+  }
+  return text.trim();
+}
+function containsWakeWord(text: string): boolean {
+  const t = text.toLowerCase();
+  return WAKE_WORDS.some((w) => t.includes(w));
+}
 
 /** Render a briefing object into a readable chat message. */
 function formatBriefing(b: CeoBriefing): string {
@@ -80,6 +96,18 @@ export function AiAssistant() {
   const recognitionRef = React.useRef<SpeechRecognitionLike | null>(null);
   const baseTextRef = React.useRef("");
 
+  // Wake word — "Vetri" always-listening (opt-in).
+  const [wakeOn, setWakeOn] = React.useState(false);
+  const [armed, setArmed] = React.useState(false); // heard "Vetri", capturing the question
+  const wakeRecRef = React.useRef<SpeechRecognitionLike | null>(null);
+  const wakeOnRef = React.useRef(false);
+  const armedRef = React.useRef(false);
+  const questionBufRef = React.useRef("");
+  const silenceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armExpiryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ignoreUntilRef = React.useRef(0); // ignore recognizer input while we speak
+  const sendRef = React.useRef<(q: string, forceSpeak?: boolean) => void>(() => {});
+
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const panelInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -92,10 +120,121 @@ export function AiAssistant() {
     setVoiceOutSupported(isSpeechSynthesisSupported());
     try {
       setVoiceOn(localStorage.getItem(VOICE_KEY) === "1");
+      setWakeOn(localStorage.getItem(WAKE_KEY) === "1");
     } catch {
       /* localStorage blocked — default off */
     }
   }, []);
+
+  // "Vetri" wake word — an always-listening recognizer that opens the assistant
+  // and answers when it hears its name. Opt-in; restarts itself when the browser
+  // times out the recognition; deafened briefly while the CEO speaks.
+  React.useEffect(() => {
+    wakeOnRef.current = wakeOn;
+    if (!wakeOn) {
+      armedRef.current = false;
+      setArmed(false);
+      return;
+    }
+    const Ctor = getSpeechCtor();
+    if (!Ctor) return;
+
+    function disarm() {
+      armedRef.current = false;
+      setArmed(false);
+      questionBufRef.current = "";
+      if (silenceRef.current) clearTimeout(silenceRef.current);
+      if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
+    }
+    function finalizeSoon() {
+      if (silenceRef.current) clearTimeout(silenceRef.current);
+      silenceRef.current = setTimeout(() => {
+        const q = questionBufRef.current.trim();
+        if (q) {
+          disarm();
+          sendRef.current(q, true);
+        }
+      }, 1500);
+    }
+    function arm(initial: string) {
+      armedRef.current = true;
+      setArmed(true);
+      setOpen(true);
+      questionBufRef.current = initial;
+      ignoreUntilRef.current = Date.now() + 1400; // don't hear our own ack
+      speak("Yes?");
+      finalizeSoon();
+      if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
+      armExpiryRef.current = setTimeout(disarm, 12000);
+    }
+
+    function start() {
+      if (!wakeOnRef.current) return;
+      const rec = new Ctor!();
+      rec.lang = "en-IN";
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.onresult = (e) => {
+        // Never react to our own speech — otherwise the CEO saying "DigitalVetri"
+        // would re-trigger the wake word and loop. `speaking` is ground truth;
+        // the ignore-window is a fallback for the moment right after speech ends.
+        if (typeof window !== "undefined" && window.speechSynthesis?.speaking) return;
+        if (Date.now() < ignoreUntilRef.current) return;
+        let finalText = "";
+        let interim = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i];
+          if (r.isFinal) finalText += r[0].transcript;
+          else interim += r[0].transcript;
+        }
+        if (!armedRef.current) {
+          if (containsWakeWord(finalText)) arm(stripWakeWord(finalText));
+          else if (containsWakeWord(interim)) arm(stripWakeWord(interim));
+          return;
+        }
+        if (finalText) {
+          questionBufRef.current = (questionBufRef.current + " " + stripWakeWord(finalText)).trim();
+          finalizeSoon();
+        } else if (interim) {
+          finalizeSoon();
+        }
+      };
+      rec.onerror = (ev) => {
+        if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+          toast.error("Microphone blocked. Allow mic access to use the “Vetri” wake word.");
+          setWakeOn(false);
+        }
+      };
+      rec.onend = () => {
+        if (!wakeOnRef.current) return;
+        try {
+          rec.start();
+        } catch {
+          setTimeout(() => wakeOnRef.current && start(), 400);
+        }
+      };
+      wakeRecRef.current = rec;
+      try {
+        rec.start();
+      } catch {
+        /* already started — ignore */
+      }
+    }
+    start();
+
+    return () => {
+      wakeOnRef.current = false;
+      const rec = wakeRecRef.current;
+      if (rec) {
+        rec.onend = null;
+        rec.onresult = null;
+        rec.stop();
+      }
+      wakeRecRef.current = null;
+      if (silenceRef.current) clearTimeout(silenceRef.current);
+      if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
+    };
+  }, [wakeOn]);
 
   const hasUserMessage = messages.some((m) => m.role === "user");
 
@@ -109,7 +248,9 @@ export function AiAssistant() {
       const msg: Message = { role: "assistant", content: formatBriefing(b), speak: b.spoken };
       setMessages([msg]);
       setBriefingState("done");
-      if (voiceOn && b.spoken) speak(b.spoken);
+      // Don't auto-narrate the whole briefing if the panel was opened by a wake
+      // ("Vetri") — the user is mid-question; speaking over them is jarring.
+      if (voiceOn && !armedRef.current && b.spoken) speak(b.spoken);
     } catch {
       setMessages([
         {
@@ -157,6 +298,20 @@ export function AiAssistant() {
     });
   }
 
+  function toggleWake() {
+    if (!voiceInSupported) return;
+    setWakeOn((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(WAKE_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      if (next) toast.success("Listening for “Vetri” — just call my name.");
+      return next;
+    });
+  }
+
   function toggleListening() {
     const Ctor = getSpeechCtor();
     if (!Ctor) return;
@@ -198,7 +353,7 @@ export function AiAssistant() {
     }
   }
 
-  async function send(question: string) {
+  async function send(question: string, forceSpeak = false) {
     if (!question.trim() || loading) return;
     recognitionRef.current?.stop();
     cancelSpeech();
@@ -214,13 +369,19 @@ export function AiAssistant() {
       const data = await res.json();
       const content = data.answer ?? data.error ?? "Sorry, something went wrong.";
       setMessages((m) => [...m, { role: "assistant", content, action: data.action }]);
-      if (voiceOn) speak(content);
+      if (voiceOn || forceSpeak) {
+        // Deafen the wake listener while the CEO talks, so it doesn't hear itself.
+        ignoreUntilRef.current = Date.now() + content.split(/\s+/).length * 360 + 1500;
+        speak(content);
+      }
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Network error. Please try again." }]);
     } finally {
       setLoading(false);
     }
   }
+  // Keep a stable ref so the wake recognizer always calls the latest send().
+  sendRef.current = send;
 
   return (
     <>
@@ -262,7 +423,17 @@ export function AiAssistant() {
               <Crown className="h-5 w-5" />
               <div className="flex-1">
                 <div className="text-sm font-semibold">Your AI CEO</div>
-                <div className="text-[11px] text-blue-100">DigitalVetri — Chief of Staff</div>
+                <div className="flex items-center gap-1 text-[11px] text-blue-100">
+                  {armed ? (
+                    <>
+                      <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" /> Listening…
+                    </>
+                  ) : wakeOn ? (
+                    "Say “Vetri” anytime"
+                  ) : (
+                    "DigitalVetri — Chief of Staff"
+                  )}
+                </div>
               </div>
               {briefingState !== "loading" && (
                 <button
@@ -283,6 +454,20 @@ export function AiAssistant() {
                   className="rounded-md p-1.5 text-blue-100 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>
+              )}
+              {voiceInSupported && (
+                <button
+                  onClick={toggleWake}
+                  title={wakeOn ? "Wake word on — say “Vetri”" : "Enable the “Vetri” wake word"}
+                  aria-label={wakeOn ? "Disable Vetri wake word" : "Enable Vetri wake word"}
+                  aria-pressed={wakeOn}
+                  className={cn(
+                    "rounded-md p-1.5 text-blue-100 transition-colors hover:bg-white/10 hover:text-white",
+                    wakeOn && "bg-white/15 text-white"
+                  )}
+                >
+                  {wakeOn ? <Ear className="h-4 w-4" /> : <EarOff className="h-4 w-4" />}
                 </button>
               )}
             </div>
@@ -363,6 +548,8 @@ export function AiAssistant() {
                   size="icon"
                   variant={listening ? "default" : "outline"}
                   onClick={toggleListening}
+                  disabled={wakeOn}
+                  title={wakeOn ? "Wake word is on — just say “Vetri”" : undefined}
                   aria-label={listening ? "Stop listening" : "Talk to your CEO"}
                   aria-pressed={listening}
                   className={cn(listening && "animate-pulse")}

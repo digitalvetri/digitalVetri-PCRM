@@ -2,11 +2,11 @@ import { z } from "zod";
 import { withApi } from "@/lib/api";
 import { requireUser } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { askDepartment, DEPARTMENTS } from "@/lib/ai/departments";
+import { askDepartment, DEPARTMENTS, DEPT_KEYS, type DeptKey } from "@/lib/ai/departments";
 import { askAssistant } from "@/lib/ai/assistant";
 
 const schema = z.object({
-  department: z.enum(["ceo", "sales", "marketing", "finance", "operations"]).default("ceo"),
+  department: z.enum(["ceo", ...DEPT_KEYS] as [string, ...string[]]).default("ceo"),
   question: z.string().min(1).max(500),
 });
 
@@ -22,7 +22,8 @@ export async function POST(req: Request) {
       const res = await askAssistant(question);
       return { department, answer: res.answer, action: res.action };
     }
-    const answer = await askDepartment(department, question);
-    return { department, title: DEPARTMENTS[department].title, answer };
+    const key = department as DeptKey;
+    const answer = await askDepartment(key, question);
+    return { department: key, title: DEPARTMENTS[key].title, answer };
   });
 }

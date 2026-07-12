@@ -17,14 +17,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { relativeTime } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { relativeTime, cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------
 // Types (mirror src/lib/ai/departments.ts + CeoBriefing, serialized)
 // ---------------------------------------------------------------
 
-type DeptKey = "sales" | "marketing" | "finance" | "operations";
+type DeptKey =
+  | "sales" | "marketing" | "social" | "finance" | "operations"
+  | "customer-success" | "engineering" | "design" | "product" | "legal" | "people";
+type DeptGroup = "Revenue" | "Delivery" | "Operations" | "Corporate";
 
 interface DeptReport {
   headline: string;
@@ -49,12 +51,30 @@ interface CeoBriefing {
   spoken: string;
 }
 
-const DEPT_META: { key: DeptKey; title: string; emoji: string; tagline: string; owns: string[] }[] = [
-  { key: "sales", title: "Head of Sales", emoji: "🎯", tagline: "Leads, outreach & closing", owns: ["Lead Radar", "Outreach", "Prospects", "Proposals"] },
-  { key: "marketing", title: "Head of Marketing", emoji: "📣", tagline: "Content, ads & inbound demand", owns: ["Content", "Ads", "Enquiry funnel", "SEO"] },
-  { key: "finance", title: "Head of Finance", emoji: "💰", tagline: "Revenue, profit & recurring", owns: ["Revenue", "MRR/ARR", "Outstanding", "Renewals"] },
-  { key: "operations", title: "Head of Operations", emoji: "⚙️", tagline: "Follow-ups, tasks & delivery", owns: ["Follow-ups", "Tasks", "Meetings", "Nurture"] },
+interface DeptMeta {
+  key: DeptKey;
+  title: string;
+  emoji: string;
+  tagline: string;
+  group: DeptGroup;
+  owns: string[];
+  grounded: boolean;
+}
+
+const DEPTS: DeptMeta[] = [
+  { key: "sales", title: "Head of Sales", emoji: "🎯", group: "Revenue", grounded: true, tagline: "Leads, outreach & closing", owns: ["Lead Radar", "Outreach", "Prospects", "Proposals"] },
+  { key: "marketing", title: "Head of Marketing", emoji: "📣", group: "Revenue", grounded: true, tagline: "Content, ads & inbound demand", owns: ["Content", "Ads", "Enquiry funnel", "SEO"] },
+  { key: "social", title: "Head of Social Media", emoji: "📱", group: "Revenue", grounded: false, tagline: "Posts, reels & community", owns: ["LinkedIn", "Instagram", "Facebook", "Reels"] },
+  { key: "engineering", title: "Head of Engineering", emoji: "💻", group: "Delivery", grounded: false, tagline: "Build & ship client projects", owns: ["Delivery", "Architecture", "Quality"] },
+  { key: "design", title: "Head of Design", emoji: "🎨", group: "Delivery", grounded: false, tagline: "UI/UX & brand craft", owns: ["UI/UX", "Brand", "Design system"] },
+  { key: "product", title: "Head of Product", emoji: "🧭", group: "Delivery", grounded: false, tagline: "Strategy, roadmap & priorities", owns: ["Roadmap", "Discovery", "Positioning"] },
+  { key: "operations", title: "Head of Operations", emoji: "⚙️", group: "Operations", grounded: true, tagline: "Follow-ups, tasks & delivery health", owns: ["Follow-ups", "Tasks", "Meetings", "Nurture"] },
+  { key: "customer-success", title: "Head of Customer Success", emoji: "🤝", group: "Operations", grounded: true, tagline: "Retention, renewals & upsell", owns: ["Active clients", "Renewals", "Upsell"] },
+  { key: "finance", title: "Head of Finance", emoji: "💰", group: "Corporate", grounded: true, tagline: "Revenue, profit & recurring", owns: ["Revenue", "MRR/ARR", "Outstanding", "Renewals"] },
+  { key: "legal", title: "Head of Legal", emoji: "⚖️", group: "Corporate", grounded: false, tagline: "Contracts, NDAs & compliance", owns: ["Contracts", "NDAs", "Compliance"] },
+  { key: "people", title: "Head of People", emoji: "👥", group: "Corporate", grounded: false, tagline: "Hiring, roles & team", owns: ["Hiring", "Onboarding", "Culture"] },
 ];
+const GROUPS: DeptGroup[] = ["Revenue", "Delivery", "Operations", "Corporate"];
 
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -98,9 +118,6 @@ export function AiCompany({ canManage }: { canManage: boolean }) {
     load();
   }, [load]);
 
-  // Force the CEO to re-synthesise from the *latest* department reports. Needed
-  // after running shifts manually, since the plain briefing is cached per day
-  // and would otherwise predate the fresh reports.
   async function rebrief() {
     setRebriefing(true);
     try {
@@ -114,109 +131,124 @@ export function AiCompany({ canManage }: { canManage: boolean }) {
     }
   }
 
+  const filedCount = Object.keys(reports).length;
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* CEO — top of the org chart */}
-      <Card className="border-primary/30 bg-gradient-to-br from-primary/10 to-transparent">
-        <CardHeader className="flex-row items-start justify-between space-y-0">
-          <CardTitle className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Crown className="h-5 w-5" />
-            </span>
-            <span>
-              AI CEO
-              <span className="block text-xs font-normal text-muted-foreground">
-                Chief of Staff — reports up from your department heads
+      <Card className="overflow-hidden border-primary/30">
+        <div className="bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
+          <CardHeader className="flex-row items-start justify-between space-y-0">
+            <CardTitle className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30">
+                <Crown className="h-6 w-6" />
               </span>
-            </span>
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            {canManage && (
-              <Button type="button" size="sm" onClick={rebrief} disabled={rebriefing || loading}>
-                {rebriefing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                <span className="ml-1 hidden sm:inline">Re-brief</span>
+              <span>
+                AI CEO
+                <span className="block text-xs font-normal text-muted-foreground">
+                  Chief of Staff · synthesises {filedCount} department report{filedCount === 1 ? "" : "s"}
+                </span>
+              </span>
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {canManage && (
+                <Button type="button" size="sm" onClick={rebrief} disabled={rebriefing || loading}>
+                  {rebriefing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  <span className="ml-1 hidden sm:inline">Re-brief</span>
+                </Button>
+              )}
+              <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                <span className="ml-1 hidden sm:inline">Refresh</span>
               </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loading && !briefing ? (
+              <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Reviewing the business…
+              </p>
+            ) : briefing ? (
+              <>
+                {briefing.headline && <p className="text-sm font-medium">{briefing.headline}</p>}
+                {briefing.revenue && <p className="text-sm text-muted-foreground">💰 {briefing.revenue}</p>}
+                {briefing.focus && (
+                  <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                    <Target className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <p className="text-sm">
+                      <span className="font-semibold">Today&apos;s #1: </span>
+                      {briefing.focus}
+                    </p>
+                  </div>
+                )}
+                {briefing.actions.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {briefing.actions.map((a, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                          {i + 1}
+                        </span>
+                        <span>
+                          {a.action}
+                          {a.why && <span className="text-muted-foreground"> — {a.why}</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {briefing.risks.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {briefing.risks.map((r, i) => (
+                      <Badge key={i} variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="mr-1 h-3 w-3" /> {r}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="py-2 text-sm text-muted-foreground">
+                No briefing yet. Run a few department shifts below, then hit Re-brief — the CEO
+                synthesises their reports.
+              </p>
             )}
-            <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              <span className="ml-1 hidden sm:inline">Refresh</span>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {loading && !briefing ? (
-            <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Reviewing the business…
-            </p>
-          ) : briefing ? (
-            <>
-              {briefing.headline && <p className="text-sm font-medium">{briefing.headline}</p>}
-              {briefing.revenue && <p className="text-sm text-muted-foreground">💰 {briefing.revenue}</p>}
-              {briefing.focus && (
-                <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                  <Target className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <p className="text-sm">
-                    <span className="font-semibold">Today&apos;s #1: </span>
-                    {briefing.focus}
-                  </p>
-                </div>
-              )}
-              {briefing.actions.length > 0 && (
-                <ul className="space-y-1.5">
-                  {briefing.actions.map((a, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                        {i + 1}
-                      </span>
-                      <span>
-                        {a.action}
-                        {a.why && <span className="text-muted-foreground"> — {a.why}</span>}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {briefing.risks.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {briefing.risks.map((r, i) => (
-                    <Badge key={i} variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
-                      <AlertTriangle className="mr-1 h-3 w-3" /> {r}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="py-2 text-sm text-muted-foreground">
-              No briefing yet. Run your department heads&apos; shifts below, then refresh — the CEO
-              synthesises their reports.
-            </p>
-          )}
-        </CardContent>
+          </CardContent>
+        </div>
       </Card>
 
-      {/* Connector hint */}
       <p className="text-center text-xs uppercase tracking-wide text-muted-foreground">
-        ▲ reports to the CEO · your department heads ▼
+        ▲ everyone reports to the CEO ▲
       </p>
 
-      {/* Department heads */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {DEPT_META.map((dept) => (
-          <DeptCard
-            key={dept.key}
-            meta={dept}
-            stored={reports[dept.key]}
-            canManage={canManage}
-            onReport={(r) =>
-              setReports((prev) => ({
-                ...prev,
-                [dept.key]: { deptKey: dept.key, deptTitle: dept.title, report: r, createdAt: new Date().toISOString() },
-              }))
-            }
-          />
-        ))}
-      </div>
+      {/* Department heads grouped by function */}
+      {GROUPS.map((group) => {
+        const depts = DEPTS.filter((d) => d.group === group);
+        if (depts.length === 0) return null;
+        return (
+          <div key={group} className="space-y-3">
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{group}</h3>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {depts.map((dept) => (
+                <DeptCard
+                  key={dept.key}
+                  meta={dept}
+                  stored={reports[dept.key]}
+                  canManage={canManage}
+                  onReport={(r) =>
+                    setReports((prev) => ({
+                      ...prev,
+                      [dept.key]: { deptKey: dept.key, deptTitle: dept.title, report: r, createdAt: new Date().toISOString() },
+                    }))
+                  }
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -231,7 +263,7 @@ function DeptCard({
   canManage,
   onReport,
 }: {
-  meta: { key: DeptKey; title: string; emoji: string; tagline: string; owns: string[] };
+  meta: DeptMeta;
   stored?: StoredDeptReport;
   canManage: boolean;
   onReport: (r: DeptReport) => void;
@@ -245,7 +277,7 @@ function DeptCard({
     try {
       const data = await postJSON<{ report: DeptReport }>("/api/company/shift", { department: meta.key });
       onReport(data.report);
-      toast.success(`${meta.title} filed a fresh report`);
+      toast.success(`${meta.title} filed a report`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Shift failed");
     } finally {
@@ -254,21 +286,26 @@ function DeptCard({
   }
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col transition-shadow hover:shadow-md">
       <CardHeader className="space-y-0 pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-lg">{meta.emoji}</span>
             <div>
-              <CardTitle className="text-base">{meta.title}</CardTitle>
+              <CardTitle className="text-sm">{meta.title}</CardTitle>
               <p className="text-xs text-muted-foreground">{meta.tagline}</p>
             </div>
           </div>
-          {stored && (
-            <span className="shrink-0 text-[10px] text-muted-foreground" title={new Date(stored.createdAt).toLocaleString()}>
-              {relativeTime(stored.createdAt)}
-            </span>
-          )}
+          <div className="flex flex-col items-end gap-1">
+            {!meta.grounded && (
+              <Badge variant="secondary" className="text-[9px] uppercase">Advisory</Badge>
+            )}
+            {stored && (
+              <span className="text-[10px] text-muted-foreground" title={new Date(stored.createdAt).toLocaleString()}>
+                {relativeTime(stored.createdAt)}
+              </span>
+            )}
+          </div>
         </div>
       </CardHeader>
 
@@ -314,24 +351,23 @@ function DeptCard({
             )}
           </>
         ) : (
-          <div className="flex flex-1 flex-col items-start justify-center gap-1 py-2">
-            <p className="text-sm text-muted-foreground">No report filed yet.</p>
+          <div className="flex flex-1 flex-col items-start justify-center gap-1.5 py-1">
+            <p className="text-sm text-muted-foreground">
+              {meta.grounded ? "No report filed yet." : "Ask me anything — I advise on demand."}
+            </p>
             <div className="flex flex-wrap gap-1">
               {meta.owns.map((o) => (
-                <Badge key={o} variant="secondary" className="text-[10px]">
-                  {o}
-                </Badge>
+                <Badge key={o} variant="secondary" className="text-[10px]">{o}</Badge>
               ))}
             </div>
           </div>
         )}
 
-        {/* Actions row */}
         {canManage && (
           <div className="mt-auto flex items-center gap-2 pt-1">
             <Button type="button" size="sm" variant="outline" onClick={runShift} disabled={running}>
               {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              <span className="ml-1">{report ? "Re-run shift" : "Run shift"}</span>
+              <span className="ml-1">{report ? "Re-run" : "Run shift"}</span>
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setChatOpen((o) => !o)}>
               <MessageSquare className="h-4 w-4" />
@@ -350,7 +386,7 @@ function DeptCard({
 // Inline chat with a department head
 // ---------------------------------------------------------------
 
-function DeptChat({ meta }: { meta: { key: DeptKey; title: string } }) {
+function DeptChat({ meta }: { meta: DeptMeta }) {
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [messages, setMessages] = React.useState<{ role: "user" | "assistant"; content: string }[]>([]);
