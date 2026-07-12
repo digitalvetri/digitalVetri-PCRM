@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ModuleTabs, INSIGHT_TABS } from "@/components/shared/module-tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +67,8 @@ export default async function ReportsPage() {
           </Link>
         </Button>
       </PageHeader>
+
+      <ModuleTabs items={INSIGHT_TABS} />
 
       <EstimateNote />
 

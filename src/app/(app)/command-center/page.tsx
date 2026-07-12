@@ -13,9 +13,6 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { dayStart, getCommandCenterSnapshot, targetFunnel } from "@/lib/command-center";
-import { isPlacesConfigured } from "@/lib/places";
-import { getAutomationConfig } from "@/lib/automation";
-import type { DiscoveredLeadItem } from "@/components/command-center/lead-radar";
 import type { DailyObjectives, ScheduleBlock } from "@/lib/ai/ceo-os";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -34,59 +31,14 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Command Center" };
 
 export default async function CommandCenterPage() {
-  const [snapshot, plan, companies, rawLeads, automation, agentRunsRaw, outreachRaw] = await Promise.all([
+  const [snapshot, plan, companies] = await Promise.all([
     getCommandCenterSnapshot(),
     prisma.dailyPlan.findUnique({ where: { date: dayStart() } }),
     prisma.company.findMany({
       select: { id: true, name: true, industry: true },
       orderBy: { name: "asc" },
     }),
-    prisma.discoveredLead.findMany({
-      where: { status: { in: ["NEW", "QUALIFIED"] } },
-      orderBy: [{ totalScore: "desc" }, { createdAt: "desc" }],
-      take: 40,
-    }),
-    getAutomationConfig(),
-    prisma.agentRun.findMany({ orderBy: { createdAt: "desc" }, take: 10 }),
-    prisma.outreachDraft.findMany({ where: { status: "DRAFT" }, orderBy: { createdAt: "desc" }, take: 30 }),
   ]);
-
-  const outreachDrafts = outreachRaw.map((d) => ({
-    id: d.id,
-    leadName: d.leadName,
-    channel: d.channel as "EMAIL" | "WHATSAPP",
-    toContact: d.toContact,
-    subject: d.subject,
-    body: d.body,
-    createdAt: d.createdAt.toISOString(),
-  }));
-
-  const agentRuns = agentRunsRaw.map((r) => ({
-    id: r.id,
-    createdAt: r.createdAt.toISOString(),
-    leadsFound: r.leadsFound,
-    sent: r.sent,
-    summary: r.summary,
-  }));
-
-  const leads: DiscoveredLeadItem[] = rawLeads.map((l) => ({
-    id: l.id,
-    name: l.name,
-    website: l.website,
-    phone: l.phone,
-    email: l.email,
-    city: l.city,
-    industry: l.industry,
-    signals: (l.signals ?? []) as string[],
-    recommendedService: l.recommendedService,
-    summary: l.summary,
-    needScore: l.needScore,
-    fitScore: l.fitScore,
-    totalScore: l.totalScore,
-    status: l.status,
-    source: l.source,
-    utmCampaign: l.utmCampaign,
-  }));
 
   const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);
 
@@ -208,7 +160,7 @@ export default async function CommandCenterPage() {
             </div>
             <p className="mt-3 text-[11px] text-muted-foreground">
               Assumes ~{formatINR(funnel.assumptions.avgDealValue, true)} avg deal &middot;{" "}
-              {Math.round(funnel.assumptions.winRate * 100)}% win rate. Find the leads in the Lead Radar tab below.
+              {Math.round(funnel.assumptions.winRate * 100)}% win rate. Find the leads in the AI Company module.
             </p>
           </CardContent>
         </Card>
@@ -282,15 +234,7 @@ export default async function CommandCenterPage() {
       </div>
 
       {/* CEO OS workspace */}
-      <CommandTabs
-        plan={serializedPlan}
-        companies={companies}
-        leads={leads}
-        placesConfigured={isPlacesConfigured()}
-        automation={automation}
-        agentRuns={agentRuns}
-        outreachDrafts={outreachDrafts}
-      />
+      <CommandTabs plan={serializedPlan} companies={companies} />
     </div>
   );
 }

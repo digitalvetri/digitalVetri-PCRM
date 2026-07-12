@@ -38,15 +38,7 @@ import {
 import { ScoreRing } from "@/components/shared/score";
 import { EstimateNote } from "@/components/shared/confidence-badge";
 import { useRole } from "@/components/layout/app-shell";
-import { LeadRadar, type DiscoveredLeadItem } from "@/components/command-center/lead-radar";
-import {
-  AutomationPanel,
-  type AutomationConfig,
-  type AgentRunItem,
-} from "@/components/command-center/automation-panel";
-import { OutreachQueue, type OutreachDraftItem } from "@/components/command-center/outreach-queue";
 import { AdsPanel } from "@/components/command-center/ads-panel";
-import { AiCompany } from "@/components/command-center/ai-company";
 import { cn } from "@/lib/utils";
 import { INDUSTRIES } from "@/lib/constants";
 import type {
@@ -147,19 +139,9 @@ function normalizePlan(plan: Record<string, unknown>): SerializedPlan {
 export function CommandTabs({
   plan,
   companies,
-  leads,
-  placesConfigured,
-  automation,
-  agentRuns,
-  outreachDrafts,
 }: {
   plan: SerializedPlan | null;
   companies: CompanyOption[];
-  leads: DiscoveredLeadItem[];
-  placesConfigured: boolean;
-  automation: AutomationConfig;
-  agentRuns: AgentRunItem[];
-  outreachDrafts: OutreachDraftItem[];
 }) {
   // Shared, so the EOD tab knows when the plan tab just created a plan.
   const [currentPlan, setCurrentPlan] = React.useState<SerializedPlan | null>(plan);
@@ -185,14 +167,10 @@ export function CommandTabs({
   }
 
   return (
-    <Tabs defaultValue="company" className="animate-fade-in">
+    <Tabs defaultValue="plan" className="animate-fade-in">
       <TabsList className="h-auto flex-wrap justify-start">
-        <TabsTrigger value="company">🏢 AI Company</TabsTrigger>
-        <TabsTrigger value="radar">Lead Radar</TabsTrigger>
-        <TabsTrigger value="outreach">Outreach</TabsTrigger>
-        <TabsTrigger value="agent">Agent</TabsTrigger>
-        <TabsTrigger value="ads">Ads</TabsTrigger>
         <TabsTrigger value="plan">Daily Plan</TabsTrigger>
+        <TabsTrigger value="ads">Ads</TabsTrigger>
         <TabsTrigger value="review">EOD Review</TabsTrigger>
         <TabsTrigger value="sales">Sales Coach</TabsTrigger>
         <TabsTrigger value="cold-call">Cold Call</TabsTrigger>
@@ -200,18 +178,6 @@ export function CommandTabs({
         <TabsTrigger value="bni">BNI</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="company" forceMount className="mt-4 data-[state=inactive]:hidden">
-        <AiCompany canManage={canManage} />
-      </TabsContent>
-      <TabsContent value="radar" forceMount className="mt-4 data-[state=inactive]:hidden">
-        <LeadRadar leads={leads} placesConfigured={placesConfigured} />
-      </TabsContent>
-      <TabsContent value="outreach" forceMount className="mt-4 data-[state=inactive]:hidden">
-        <OutreachQueue drafts={outreachDrafts} />
-      </TabsContent>
-      <TabsContent value="agent" forceMount className="mt-4 data-[state=inactive]:hidden">
-        <AutomationPanel config={automation} recentRuns={agentRuns} placesConfigured={placesConfigured} />
-      </TabsContent>
       <TabsContent value="ads" forceMount className="mt-4 data-[state=inactive]:hidden">
         <AdsPanel />
       </TabsContent>

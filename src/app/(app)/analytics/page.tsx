@@ -1,5 +1,6 @@
 import { Target, IndianRupee, Gauge, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ModuleTabs, INSIGHT_TABS } from "@/components/shared/module-tabs";
 import { StatCard } from "@/components/shared/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EstimateNote } from "@/components/shared/confidence-badge";
@@ -89,6 +90,8 @@ export default async function AnalyticsPage() {
         title="Analytics"
         description="Explore your prospect intelligence across scores, stages and geography."
       />
+
+      <ModuleTabs items={INSIGHT_TABS} />
 
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

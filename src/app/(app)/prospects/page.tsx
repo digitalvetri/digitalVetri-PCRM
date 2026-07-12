@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Users, BadgeCheck, Handshake, Trophy, Download } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ModuleTabs, CLIENT_TABS } from "@/components/shared/module-tabs";
 import { StatCard } from "@/components/shared/stat-card";
 import { Button } from "@/components/ui/button";
 import { EstimateNote } from "@/components/shared/confidence-badge";
@@ -45,6 +46,8 @@ export default async function ProspectsPage() {
           </Link>
         </Button>
       </PageHeader>
+
+      <ModuleTabs items={CLIENT_TABS} />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard index={0} label="Total Prospects" value={prospects.length} icon={Users} accent="primary" />

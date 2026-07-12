@@ -1,5 +1,6 @@
 import { Building2, BadgeCheck, Crown, Gauge } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ModuleTabs, CLIENT_TABS } from "@/components/shared/module-tabs";
 import { StatCard } from "@/components/shared/stat-card";
 import { EstimateNote } from "@/components/shared/confidence-badge";
 import { CompaniesTable } from "@/components/companies/companies-table";
@@ -49,6 +50,8 @@ export default async function CompaniesPage() {
         <ImportDialog />
         <AddCompanyDialog industries={industries} />
       </PageHeader>
+
+      <ModuleTabs items={CLIENT_TABS} />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard index={0} label="Total Companies" value={total} icon={Building2} accent="primary" />

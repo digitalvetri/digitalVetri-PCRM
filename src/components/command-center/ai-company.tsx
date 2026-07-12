@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRole } from "@/components/layout/app-shell";
 import { relativeTime, cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------
@@ -91,7 +92,8 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
 // The AI Company org chart
 // ---------------------------------------------------------------
 
-export function AiCompany({ canManage }: { canManage: boolean }) {
+export function AiCompany() {
+  const canManage = useRole() !== "VIEWER";
   const [loading, setLoading] = React.useState(true);
   const [rebriefing, setRebriefing] = React.useState(false);
   const [briefing, setBriefing] = React.useState<CeoBriefing | null>(null);

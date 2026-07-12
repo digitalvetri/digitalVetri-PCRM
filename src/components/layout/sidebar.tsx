@@ -6,11 +6,8 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Rocket,
+  Bot,
   Building2,
-  Users,
-  Brain,
-  Target,
-  Workflow,
   CalendarClock,
   FileText,
   Mail,
@@ -19,7 +16,6 @@ import {
   CheckSquare,
   Calendar,
   BarChart3,
-  LineChart,
   Settings,
   X,
 } from "lucide-react";
@@ -30,11 +26,8 @@ import { ScrollArea } from "@/components/ui/misc";
 export const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/command-center", label: "Command Center", icon: Rocket },
-  { href: "/companies", label: "Companies", icon: Building2 },
-  { href: "/prospects", label: "Prospects", icon: Users },
-  { href: "/lead-intelligence", label: "Lead Intelligence", icon: Brain },
-  { href: "/crm-opportunities", label: "CRM Opportunities", icon: Target },
-  { href: "/automation-opportunities", label: "AI Automation Opportunities", icon: Workflow },
+  { href: "/company", label: "AI Company", icon: Bot },
+  { href: "/companies", label: "Clients", icon: Building2 },
   { href: "/meetings", label: "Discovery Meetings", icon: CalendarClock },
   { href: "/proposals", label: "Proposal Generator", icon: FileText },
   { href: "/email-generator", label: "Email Generator", icon: Mail },
@@ -42,8 +35,7 @@ export const NAV_ITEMS = [
   { href: "/follow-ups", label: "Follow-up Manager", icon: BellRing },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/calendar", label: "Calendar", icon: Calendar },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/analytics", label: "Analytics", icon: LineChart },
+  { href: "/reports", label: "Reports & Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -98,8 +90,12 @@ export function Sidebar({
   const nav = (
     <nav className="flex flex-col gap-0.5 px-3 pb-6">
       {NAV_ITEMS.map((item) => {
+        // Match on segment boundaries so "/company" doesn't also light up for
+        // "/companies" (and vice-versa).
         const active =
-          item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          item.href === "/"
+            ? pathname === "/"
+            : pathname === item.href || pathname.startsWith(item.href + "/");
         return (
           <Link
             key={item.href}

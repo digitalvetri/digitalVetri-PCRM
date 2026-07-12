@@ -128,7 +128,7 @@ async function topByScore(
   return {
     answer: `Top ${rows.length} companies by ${label} potential:\n\n${list}`,
     data: rows.map((r) => ({ id: r.companyId, name: r.company.name, score: r[field] })),
-    action: { type: "navigate", href: "/crm-opportunities", label: `View ${label} opportunities` },
+    action: { type: "navigate", href: "/companies", label: `View top ${label} companies` },
   };
 }
 
