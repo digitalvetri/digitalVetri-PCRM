@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crown, X, Send, Loader2, ArrowRight, Mic, Volume2, VolumeX, RefreshCw, Ear, EarOff } from "lucide-react";
+import { Crown, X, Send, Loader2, ArrowRight, Mic, Volume2, VolumeX, RefreshCw, Ear, EarOff, Hand } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useRole } from "@/components/layout/app-shell";
@@ -42,6 +42,7 @@ const SUGGESTIONS = [
 
 const VOICE_KEY = "dv-ceo-voice";
 const WAKE_KEY = "dv-vetri-wake";
+const CLAP_KEY = "dv-vetri-clap";
 // The names the assistant answers to (spoken). Kept loose for recognizer slips.
 const WAKE_WORDS = ["vetri", "vetary", "vetree", "vettri", "hey vetri", "hi vetri"];
 
@@ -98,8 +99,10 @@ export function AiAssistant() {
 
   // Wake word — "Vetri" always-listening (opt-in).
   const [wakeOn, setWakeOn] = React.useState(false);
-  const [armed, setArmed] = React.useState(false); // heard "Vetri", capturing the question
+  const [clapOn, setClapOn] = React.useState(false);
+  const [armed, setArmed] = React.useState(false); // heard "Vetri" / clap, capturing the question
   const wakeRecRef = React.useRef<SpeechRecognitionLike | null>(null);
+  const captureRecRef = React.useRef<SpeechRecognitionLike | null>(null);
   const wakeOnRef = React.useRef(false);
   const armedRef = React.useRef(false);
   const questionBufRef = React.useRef("");
@@ -121,10 +124,94 @@ export function AiAssistant() {
     try {
       setVoiceOn(localStorage.getItem(VOICE_KEY) === "1");
       setWakeOn(localStorage.getItem(WAKE_KEY) === "1");
+      setClapOn(localStorage.getItem(CLAP_KEY) === "1");
     } catch {
       /* localStorage blocked — default off */
     }
   }, []);
+
+  // Shared "arm" flow — both the wake word AND a clap trigger this: Vetri
+  // wakes, greets you as boss, and captures your question.
+  const disarm = React.useCallback(() => {
+    armedRef.current = false;
+    setArmed(false);
+    questionBufRef.current = "";
+    if (silenceRef.current) clearTimeout(silenceRef.current);
+    if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
+    // Stop the one-shot capture recognizer (if we started one for clap/button).
+    if (captureRecRef.current) {
+      captureRecRef.current.onresult = null;
+      captureRecRef.current.onend = null;
+      try {
+        captureRecRef.current.stop();
+      } catch {
+        /* ignore */
+      }
+      captureRecRef.current = null;
+    }
+  }, []);
+  const finalizeSoon = React.useCallback(() => {
+    if (silenceRef.current) clearTimeout(silenceRef.current);
+    silenceRef.current = setTimeout(() => {
+      const q = questionBufRef.current.trim();
+      if (q) {
+        disarm();
+        sendRef.current(q, true);
+      }
+    }, 1500);
+  }, [disarm]);
+  // When Vetri is woken by a clap or the "Talk to Vetri" button (not the
+  // always-on wake word), nothing is feeding the question buffer — so start a
+  // short recognizer that captures what you say next, then stops.
+  const startCapture = React.useCallback(() => {
+    const Ctor = getSpeechCtor();
+    if (!Ctor) return;
+    const rec = new Ctor();
+    rec.lang = "en-IN";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      if (typeof window !== "undefined" && window.speechSynthesis?.speaking) return;
+      if (Date.now() < ignoreUntilRef.current) return;
+      let finalText = "";
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalText += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      if (finalText) {
+        questionBufRef.current = (questionBufRef.current + " " + finalText).trim();
+        finalizeSoon();
+      } else if (interim) {
+        finalizeSoon();
+      }
+    };
+    captureRecRef.current = rec;
+    try {
+      rec.start();
+    } catch {
+      /* ignore */
+    }
+  }, [finalizeSoon]);
+  const arm = React.useCallback(
+    (initial: string) => {
+      if (armedRef.current) return; // already listening — don't re-greet
+      armedRef.current = true;
+      setArmed(true);
+      setOpen(true);
+      questionBufRef.current = initial;
+      ignoreUntilRef.current = Date.now() + 2600; // don't hear our own greeting
+      speak("Yes boss, what should I do now?");
+      finalizeSoon();
+      // The always-on wake recognizer already feeds the buffer; only spin up a
+      // capture recognizer when it isn't running (clap / button activation).
+      if (!wakeOnRef.current) startCapture();
+      if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
+      armExpiryRef.current = setTimeout(disarm, 12000);
+    },
+    [disarm, finalizeSoon, startCapture]
+  );
 
   // "Vetri" wake word — an always-listening recognizer that opens the assistant
   // and answers when it hears its name. Opt-in; restarts itself when the browser
@@ -138,35 +225,6 @@ export function AiAssistant() {
     }
     const Ctor = getSpeechCtor();
     if (!Ctor) return;
-
-    function disarm() {
-      armedRef.current = false;
-      setArmed(false);
-      questionBufRef.current = "";
-      if (silenceRef.current) clearTimeout(silenceRef.current);
-      if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
-    }
-    function finalizeSoon() {
-      if (silenceRef.current) clearTimeout(silenceRef.current);
-      silenceRef.current = setTimeout(() => {
-        const q = questionBufRef.current.trim();
-        if (q) {
-          disarm();
-          sendRef.current(q, true);
-        }
-      }, 1500);
-    }
-    function arm(initial: string) {
-      armedRef.current = true;
-      setArmed(true);
-      setOpen(true);
-      questionBufRef.current = initial;
-      ignoreUntilRef.current = Date.now() + 1400; // don't hear our own ack
-      speak("Yes?");
-      finalizeSoon();
-      if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
-      armExpiryRef.current = setTimeout(disarm, 12000);
-    }
 
     function start() {
       if (!wakeOnRef.current) return;
@@ -234,7 +292,88 @@ export function AiAssistant() {
       if (silenceRef.current) clearTimeout(silenceRef.current);
       if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
     };
-  }, [wakeOn]);
+  }, [wakeOn, arm, finalizeSoon]);
+
+  // Clap-to-activate — a second, hands-free way to wake Vetri. Listens for two
+  // quick amplitude spikes (claps) via Web Audio and triggers the same arm flow.
+  React.useEffect(() => {
+    if (!clapOn) return;
+    let audioCtx: AudioContext | null = null;
+    let stream: MediaStream | null = null;
+    let raf = 0;
+    let lastClap = 0;
+    let firstClapAt = 0;
+    let cancelled = false;
+
+    const AC =
+      typeof window !== "undefined"
+        ? window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        : undefined;
+    if (!AC || !navigator.mediaDevices?.getUserMedia) {
+      toast.error("Clap detection isn’t supported in this browser.");
+      setClapOn(false);
+      return;
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .then((s) => {
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
+        audioCtx = new AC();
+        const src = audioCtx.createMediaStreamSource(s);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        src.connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+
+        const tick = () => {
+          if (cancelled) return;
+          analyser.getByteTimeDomainData(data);
+          // Peak deviation from the 128 midpoint = loudness of a transient.
+          let peak = 0;
+          for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i] - 128));
+          const now = performance.now();
+          // A clap is a sharp spike; debounce 250ms so one clap ≠ many.
+          if (peak > 90 && now - lastClap > 250) {
+            lastClap = now;
+            if (now - firstClapAt < 900) {
+              // second clap within the window → activate
+              firstClapAt = 0;
+              if (!(typeof window !== "undefined" && window.speechSynthesis?.speaking)) arm("");
+            } else {
+              firstClapAt = now;
+            }
+          }
+          raf = requestAnimationFrame(tick);
+        };
+        tick();
+      })
+      .catch(() => {
+        toast.error("Microphone blocked. Allow mic access to use clap-to-activate.");
+        setClapOn(false);
+      });
+
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      stream?.getTracks().forEach((t) => t.stop());
+      audioCtx?.close().catch(() => {});
+    };
+  }, [clapOn, arm]);
+
+  // The Vetri HUD's "Talk to Vetri" button dispatches this — open + greet as boss.
+  React.useEffect(() => {
+    const onTalk = () => {
+      setOpen(true);
+      arm("");
+    };
+    window.addEventListener("vetri:talk", onTalk);
+    return () => window.removeEventListener("vetri:talk", onTalk);
+  }, [arm]);
 
   const hasUserMessage = messages.some((m) => m.role === "user");
 
@@ -308,6 +447,19 @@ export function AiAssistant() {
         /* ignore */
       }
       if (next) toast.success("Listening for “Vetri” — just call my name.");
+      return next;
+    });
+  }
+
+  function toggleClap() {
+    setClapOn((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(CLAP_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      if (next) toast.success("Clap twice and I’ll answer, boss.");
       return next;
     });
   }
@@ -430,6 +582,8 @@ export function AiAssistant() {
                     </>
                   ) : wakeOn ? (
                     "Say “Vetri” anytime"
+                  ) : clapOn ? (
+                    "Clap twice to talk"
                   ) : (
                     "DigitalVetri — Chief of Staff"
                   )}
@@ -470,6 +624,18 @@ export function AiAssistant() {
                   {wakeOn ? <Ear className="h-4 w-4" /> : <EarOff className="h-4 w-4" />}
                 </button>
               )}
+              <button
+                onClick={toggleClap}
+                title={clapOn ? "Clap-to-activate on — clap twice" : "Enable clap-to-activate"}
+                aria-label={clapOn ? "Disable clap activation" : "Enable clap activation"}
+                aria-pressed={clapOn}
+                className={cn(
+                  "rounded-md p-1.5 text-blue-100 transition-colors hover:bg-white/10 hover:text-white",
+                  clapOn && "bg-white/15 text-white"
+                )}
+              >
+                <Hand className="h-4 w-4" />
+              </button>
             </div>
 
             <div

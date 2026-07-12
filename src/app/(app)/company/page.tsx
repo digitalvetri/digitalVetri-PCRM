@@ -1,25 +1,35 @@
 import { prisma } from "@/lib/prisma";
 import { isPlacesConfigured } from "@/lib/places";
 import { getAutomationConfig } from "@/lib/automation";
+import { getCommandCenterSnapshot } from "@/lib/command-center";
+import { getRecurringSnapshot } from "@/lib/recurring";
 import { PageHeader } from "@/components/shared/page-header";
 import { CompanyModule } from "@/components/command-center/company-module";
 import type { DiscoveredLeadItem } from "@/components/command-center/lead-radar";
+import type { VetriProvider } from "@/components/command-center/vetri-hud";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "AI Company" };
 
 export default async function AiCompanyPage() {
-  const [automation, rawLeads, agentRunsRaw, outreachRaw] = await Promise.all([
-    getAutomationConfig(),
-    prisma.discoveredLead.findMany({
-      where: { status: { in: ["NEW", "QUALIFIED"] } },
-      orderBy: [{ totalScore: "desc" }, { createdAt: "desc" }],
-      take: 40,
-    }),
-    prisma.agentRun.findMany({ orderBy: { createdAt: "desc" }, take: 10 }),
-    prisma.outreachDraft.findMany({ where: { status: "DRAFT" }, orderBy: { createdAt: "desc" }, take: 30 }),
-  ]);
+  const [automation, snapshot, recurring, rawLeads, agentRunsRaw, outreachRaw, companies, prospects, leadCount, noteCount] =
+    await Promise.all([
+      getAutomationConfig(),
+      getCommandCenterSnapshot(),
+      getRecurringSnapshot(),
+      prisma.discoveredLead.findMany({
+        where: { status: { in: ["NEW", "QUALIFIED"] } },
+        orderBy: [{ totalScore: "desc" }, { createdAt: "desc" }],
+        take: 40,
+      }),
+      prisma.agentRun.findMany({ orderBy: { createdAt: "desc" }, take: 10 }),
+      prisma.outreachDraft.findMany({ where: { status: "DRAFT" }, orderBy: { createdAt: "desc" }, take: 30 }),
+      prisma.company.count(),
+      prisma.prospect.count(),
+      prisma.discoveredLead.count(),
+      prisma.note.count(),
+    ]);
 
   const leads: DiscoveredLeadItem[] = rawLeads.map((l) => ({
     id: l.id,
@@ -58,11 +68,33 @@ export default async function AiCompanyPage() {
     summary: r.summary,
   }));
 
+  // Which AI providers are wired up (key present on the server).
+  const providers: VetriProvider[] = [
+    { name: "Groq", connected: Boolean(process.env.GROQ_API_KEY) },
+    { name: "Gemini", connected: Boolean(process.env.GEMINI_API_KEY) },
+    { name: "OpenAI", connected: Boolean(process.env.OPENAI_API_KEY) },
+    { name: "Claude", connected: Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) },
+  ];
+
+  const vitals = {
+    monthlyTarget: snapshot.monthlyTarget,
+    revenueClosed: snapshot.revenueClosedThisMonth,
+    achievementPct: snapshot.achievementPct,
+    pipelineValue: snapshot.pipelineValue,
+    mrr: recurring.mrr,
+    meetingsToday: snapshot.meetingsToday,
+    followUpsPending: snapshot.followUpsPending,
+    missedFollowUps: snapshot.missedFollowUps,
+    openTasks: snapshot.openTasks,
+  };
+
+  const counts = { companies, prospects, leads: leadCount, notes: noteCount };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="AI Company"
-        description="Your AI CEO and department heads — working the pipeline around the clock and reporting up."
+        description="Vetri — your AI CEO and department heads, working the pipeline around the clock."
       />
       <CompanyModule
         leads={leads}
@@ -70,6 +102,9 @@ export default async function AiCompanyPage() {
         automation={automation}
         agentRuns={agentRuns}
         placesConfigured={isPlacesConfigured()}
+        vitals={vitals}
+        providers={providers}
+        counts={counts}
       />
     </div>
   );

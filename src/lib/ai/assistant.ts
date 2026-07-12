@@ -2,7 +2,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateJSON, generateText } from "@/lib/ai/provider";
 import { CEO_OS_SYSTEM } from "@/lib/ai/ceo-os";
-import { getCommandCenterSnapshot } from "@/lib/command-center";
+import { getCommandCenterSnapshot, targetFunnel } from "@/lib/command-center";
+import { getLatestDeptReports } from "@/lib/ai/departments";
 import { formatINR } from "@/lib/utils";
 
 /**
@@ -96,11 +97,25 @@ export async function askAssistant(question: string): Promise<AssistantResult> {
     case "generate_questions":
       return findCompanyForAction(plan.companyName, "meetings", "Open Discovery Meetings");
     default: {
-      // Open-ended questions get the full CEO OS persona, grounded in the
-      // live pipeline snapshot so advice references real numbers and leads.
-      const snapshot = await getCommandCenterSnapshot();
+      // Open-ended questions get the full CEO OS persona, grounded in the live
+      // snapshot + department reports + the target→activity math so answers are
+      // concrete plans, not platitudes — including "how do I hit ₹X" questions.
+      const [snapshot, deptReports] = await Promise.all([
+        getCommandCenterSnapshot(),
+        getLatestDeptReports(),
+      ]);
+      const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);
+      const teamReports = deptReports.map((r) => ({
+        department: r.deptTitle,
+        headline: r.report.headline,
+        risks: r.report.risks,
+      }));
       const answer = await generateText(
-        `Live business snapshot (real data):\n${JSON.stringify(snapshot)}\n\nFounder's question: "${question}"\n\nAnswer as the CEO Operating System: direct, specific, revenue-first, referencing the real data above where relevant. If an app module helps (Command Center, Companies, Prospects, Lead Intelligence, CRM Opportunities, Proposals, Meetings, Follow-ups, Reports), point to it. Keep it under 180 words.`,
+        `Live business snapshot (real data):\n${JSON.stringify(snapshot)}\n\nTarget → activity math (what it takes to hit the monthly target, if set):\n${JSON.stringify(funnel ?? "no target set")}\n\nYour department heads' latest reports:\n${JSON.stringify(teamReports)}\n\nThe boss asks: "${question}"\n\nAnswer as Vetri — the founder's AI CEO. Be direct, specific and revenue-first, grounded in the real data above.
+- If they ask HOW TO REACH a revenue number (e.g. "how do I make ₹5 lakh"), give a concrete numeric plan: the leads → meetings → proposals → deals needed (use the funnel math), which specific prospects/leads to push, and a week-by-week sequence.
+- If they ask about a department (sales, marketing, finance, operations, etc.), draw on that head's report.
+- Always end with a short, numbered ACTION PLAN (2-4 steps) they can start today.
+Keep it under 220 words, plain and confident.`,
         { system: CEO_OS_SYSTEM, temperature: 0.5 }
       );
       return {
