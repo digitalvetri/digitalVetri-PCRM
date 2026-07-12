@@ -7,6 +7,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
   if (!user.isActive) return <PendingApproval email={user.email} />;
+  // Employees never see the sales app — they live in their own /me portal.
+  if (user.role === "EMPLOYEE") redirect("/me");
 
   return <AppShell userRole={user.role}>{children}</AppShell>;
 }

@@ -19,6 +19,7 @@ enum Role {
   MANAGER
   SALES
   VIEWER
+  EMPLOYEE
 }
 
 model User {
@@ -40,6 +41,16 @@ model User {
   meetings          Meeting[]
   proposals         Proposal[]
   notes             Note[]
+
+  // HRMS (role = EMPLOYEE)
+  employeeProfile     EmployeeProfile?
+  projectAssignments  ProjectAssignment[]
+  attendance          Attendance[]
+  leaveRequests       LeaveRequest[]      @relation("EmployeeLeaves")
+  reviewedLeaves      LeaveRequest[]      @relation("LeaveReviewer")
+  salaryRecords       SalaryRecord[]
+  performanceReviews  PerformanceReview[] @relation("EmployeeReviews")
+  authoredReviews     PerformanceReview[] @relation("ReviewAuthor")
 
   @@index([clerkId])
   @@index([role])
@@ -129,6 +140,7 @@ model Company {
   generatedContent GeneratedContent[]
   activities       Activity[]
   notes            Note[]
+  projects         Project[]
 
   @@index([industry])
   @@index([city])
@@ -808,4 +820,164 @@ model AppSetting {
 model Counter {
   name  String @id
   value Int    @default(0)
+}
+
+// ============================================================
+// HRMS — Employees, Projects, Attendance, Leave, Salary, Performance
+// ============================================================
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+  HOLIDAY
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  EARNED
+  UNPAID
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum SalaryStatus {
+  DRAFT
+  PAID
+}
+
+/// One-to-one HR profile for a User whose role is EMPLOYEE.
+model EmployeeProfile {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeCode String    @unique
+  designation  String?
+  department   String?
+  phone        String?
+  address      String?
+  joinDate     DateTime?
+  baseSalary   Float     @default(0) // monthly base — HR/admin only, never exposed to the employee
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([department])
+}
+
+/// A client delivery project. `value` is money and is NEVER returned to employees.
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  companyId   String?
+  company     Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  startDate   DateTime?
+  dueDate     DateTime?
+  value       Float?        // contract value — admin/manager only
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  assignments ProjectAssignment[]
+
+  @@index([status])
+  @@index([companyId])
+}
+
+model ProjectAssignment {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String? // their role on the project
+  assignedAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Attendance {
+  id       String           @id @default(cuid())
+  userId   String
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date     DateTime // date-only (IST midnight)
+  checkIn  DateTime?
+  checkOut DateTime?
+  status   AttendanceStatus @default(PRESENT)
+  note     String?
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+model LeaveRequest {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation("EmployeeLeaves", fields: [userId], references: [id], onDelete: Cascade)
+  type         LeaveType   @default(CASUAL)
+  startDate    DateTime
+  endDate      DateTime
+  reason       String?
+  status       LeaveStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?       @relation("LeaveReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime    @default(now())
+
+  @@index([userId])
+  @@index([status])
+}
+
+model SalaryRecord {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month      String // "yyyy-MM"
+  baseSalary Float        @default(0)
+  allowances Float        @default(0)
+  deductions Float        @default(0)
+  netPay     Float        @default(0)
+  status     SalaryStatus @default(DRAFT)
+  paidAt     DateTime?
+  note       String?
+  createdAt  DateTime     @default(now())
+
+  @@unique([userId, month])
+  @@index([userId])
+}
+
+model PerformanceReview {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation("EmployeeReviews", fields: [userId], references: [id], onDelete: Cascade)
+  period       String // e.g. "2026-Q2" or "2026-07"
+  reviewerId   String?
+  reviewer     User?    @relation("ReviewAuthor", fields: [reviewerId], references: [id], onDelete: SetNull)
+  rating       Int      @default(0) // 1-5
+  strengths    String?
+  improvements String?
+  comments     String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
 }

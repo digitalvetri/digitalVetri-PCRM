@@ -16,12 +16,14 @@ import {
   CheckSquare,
   Calendar,
   BarChart3,
+  UsersRound,
   Settings,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/shared/logo";
 import { ScrollArea } from "@/components/ui/misc";
+import { useRole } from "@/components/layout/app-shell";
 
 export const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -36,8 +38,14 @@ export const NAV_ITEMS = [
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/reports", label: "Reports & Analytics", icon: BarChart3 },
+  { href: "/team", label: "Team", icon: UsersRound, roles: ["ADMIN", "MANAGER"] },
   { href: "/settings", label: "Settings", icon: Settings },
-] as const;
+] as const satisfies readonly {
+  href: string;
+  label: string;
+  icon: typeof Settings;
+  roles?: readonly string[];
+}[];
 
 export function Sidebar({
   mobileOpen,
@@ -47,7 +55,9 @@ export function Sidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const role = useRole();
   const drawerRef = React.useRef<HTMLElement>(null);
+  const items = NAV_ITEMS.filter((i) => !("roles" in i) || (i.roles as readonly string[]).includes(role ?? ""));
 
   // Focus trap for the mobile drawer: move focus in on open, loop Tab within
   // the drawer, close on Escape, and restore focus to the trigger on close.
@@ -89,7 +99,7 @@ export function Sidebar({
 
   const nav = (
     <nav className="flex flex-col gap-0.5 px-3 pb-6">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         // Match on segment boundaries so "/company" doesn't also light up for
         // "/companies" (and vice-versa).
         const active =

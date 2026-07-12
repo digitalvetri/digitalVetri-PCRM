@@ -22,8 +22,10 @@ import { Switch } from "@/components/ui/misc";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/misc";
 import { initials } from "@/lib/utils";
 
-type Role = "ADMIN" | "MANAGER" | "SALES" | "VIEWER";
+type Role = "ADMIN" | "MANAGER" | "SALES" | "VIEWER" | "EMPLOYEE";
 
+// EMPLOYEE is intentionally not assignable here — employees are created and
+// managed in the Team module (with a login), not via this role dropdown.
 const ROLES: Role[] = ["ADMIN", "MANAGER", "SALES", "VIEWER"];
 
 export interface TeamMember {

@@ -29,6 +29,8 @@ export default async function SettingsPage() {
   const settings = await loadSettings();
   const users: TeamMember[] = canManageUsers
     ? await prisma.user.findMany({
+        // Employees are managed in the Team module, not the settings user list.
+        where: { role: { not: "EMPLOYEE" } },
         orderBy: [{ isActive: "desc" }, { name: "asc" }],
         select: {
           id: true,

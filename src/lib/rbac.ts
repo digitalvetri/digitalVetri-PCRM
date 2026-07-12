@@ -35,6 +35,8 @@ const PERMISSIONS = {
   "commandCenter.manage": ["ADMIN", "MANAGER", "SALES"],
   "settings.manage": ["ADMIN"],
   "users.manage": ["ADMIN"],
+  // HRMS admin: create employees, manage projects/attendance/leave/salary/reviews.
+  "hr.manage": ["ADMIN", "MANAGER"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
