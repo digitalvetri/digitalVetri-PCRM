@@ -24,6 +24,66 @@ Style: professional, confident, direct, encouraging, data-driven, practical. Nev
 Hard rules: never fabricate company data or contacts; use only publicly available information; clearly label estimates; recommend human review before outreach; respect anti-spam laws and platform terms; all money in INR.`;
 
 // ---------------------------------------------------------------
+// CEO morning briefing — the proactive "chief of staff" analysis the
+// AI CEO greets the founder with when they open the app. Grounded in the
+// live pipeline snapshot; includes a `spoken` field for clean voice playback.
+// ---------------------------------------------------------------
+
+export interface CeoBriefing {
+  greeting: string; // short, spoken-friendly opener
+  headline: string; // one-line verdict on the business today
+  revenue: string; // where revenue stands vs target, plainly
+  focus: string; // THE single most important thing today
+  risks: string[]; // watch-items (missed follow-ups, expiring proposals, cold prospects)
+  actions: { action: string; why: string }[]; // 3 prioritised moves, revenue-first
+  spoken: string; // a natural 4-6 sentence narration for text-to-speech
+}
+
+const ceoBriefingSchema = z.object({
+  greeting: z.string().catch("Good morning."),
+  headline: z.string().catch(""),
+  revenue: z.string().catch(""),
+  focus: z.string().catch(""),
+  risks: z.array(z.string()).catch([]),
+  actions: z
+    .array(z.object({ action: z.string().catch(""), why: z.string().catch("") }))
+    .catch([]),
+  spoken: z.string().catch(""),
+});
+
+export async function generateCeoBriefing(input: {
+  context: Record<string, unknown>; // live pipeline snapshot
+  funnel?: Record<string, unknown> | null; // target → activity math
+  departmentReports?: unknown; // latest shift reports from the department heads
+  date: string;
+}): Promise<CeoBriefing> {
+  return generateJSON(
+    `You are the founder's AI CEO giving the morning briefing for ${input.date}. Your department heads (Sales, Marketing, Finance, Operations) have filed their shift reports below. Synthesise them with the live data and brief the founder like a sharp chief of staff — no fluff, revenue-first, specific to THIS data. Where a department flagged something, fold it into your focus/risks/actions.
+
+Live pipeline snapshot (real data — reference actual company names, numbers, counts):
+${JSON.stringify(input.context, null, 2)}
+
+Target → activity math (what it takes to hit the monthly target):
+${JSON.stringify(input.funnel ?? "no target set", null, 2)}
+
+Your department heads' latest shift reports:
+${JSON.stringify(input.departmentReports ?? "no department reports yet", null, 2)}
+
+Produce:
+- "greeting": a short, warm spoken opener (e.g. "Good morning — here's where we stand.").
+- "headline": one punchy line summarising the state of the business today.
+- "revenue": one line on revenue vs target (use the numbers; if no target is set, say so and note pipeline value).
+- "focus": the SINGLE most important thing the founder must do today, named specifically (a company, a proposal, a follow-up) — not generic advice.
+- "risks": 0-4 concrete watch-items pulled from the data (missed follow-ups, proposals expiring, prospects going cold, empty pipeline). Empty array if genuinely none.
+- "actions": exactly 3 prioritised moves for today, revenue-first, each a { "action", "why" }. Reference real names/numbers.
+- "spoken": a natural, flowing 4-6 sentence narration of the above for text-to-speech — conversational, no bullet points, no emoji, no markdown. This is what the CEO says out loud.`,
+    `{ "greeting": string, "headline": string, "revenue": string, "focus": string, "risks": string[], "actions": [{ "action": string, "why": string }], "spoken": string }`,
+    { system: CEO_OS_SYSTEM, temperature: 0.5, maxTokens: 2000 },
+    ceoBriefingSchema
+  );
+}
+
+// ---------------------------------------------------------------
 // Daily planner
 // ---------------------------------------------------------------
 

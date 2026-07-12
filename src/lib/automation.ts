@@ -12,6 +12,8 @@ import { sendEmail, isEmailConfigured } from "@/lib/email";
 import { notifyInstant } from "@/lib/notify";
 import { istEndOfDay } from "@/lib/time";
 import { recomputeProspectNextFollowUp } from "@/lib/follow-up-sync";
+import { computeCeoBriefing, storeCeoBriefing } from "@/lib/ceo-briefing";
+import { DEPARTMENT_LIST, runDepartmentShift } from "@/lib/ai/departments";
 
 export interface Watchlist {
   industry: string;
@@ -297,6 +299,30 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
       `💼 ${leadsFound} new lead${leadsFound === 1 ? "" : "s"} on your radar`,
       notes.join("\n") + `\n\nOpen: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://dv-crm.online"}/command-center`
     );
+  }
+
+  // The AI Company works its overnight shift: each department head files a
+  // report first, then the CEO synthesises them all into the morning briefing.
+  // Best-effort per department so one failure can't sink the run or the briefing.
+  let shiftsFiled = 0;
+  for (const dept of DEPARTMENT_LIST) {
+    try {
+      await runDepartmentShift(dept.key);
+      shiftsFiled += 1;
+    } catch (err) {
+      console.error(`[agent] ${dept.key} shift failed`, err);
+    }
+  }
+  if (shiftsFiled) notes.push(`${shiftsFiled} department head(s) filed their shift report.`);
+
+  // Refresh the AI CEO's morning briefing overnight (now synthesising the
+  // department reports) so it's ready — and voiced — the moment the founder
+  // opens the app. Best-effort: a briefing failure must never fail the run.
+  try {
+    await storeCeoBriefing(await computeCeoBriefing());
+    notes.push("CEO synthesised the morning briefing from the team's reports.");
+  } catch (err) {
+    console.error("[agent] CEO briefing refresh failed", err);
   }
 
   const digest = await buildDigest(leadsFound);

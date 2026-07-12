@@ -46,6 +46,7 @@ import {
 } from "@/components/command-center/automation-panel";
 import { OutreachQueue, type OutreachDraftItem } from "@/components/command-center/outreach-queue";
 import { AdsPanel } from "@/components/command-center/ads-panel";
+import { AiCompany } from "@/components/command-center/ai-company";
 import { cn } from "@/lib/utils";
 import { INDUSTRIES } from "@/lib/constants";
 import type {
@@ -184,8 +185,9 @@ export function CommandTabs({
   }
 
   return (
-    <Tabs defaultValue="plan" className="animate-fade-in">
+    <Tabs defaultValue="company" className="animate-fade-in">
       <TabsList className="h-auto flex-wrap justify-start">
+        <TabsTrigger value="company">🏢 AI Company</TabsTrigger>
         <TabsTrigger value="radar">Lead Radar</TabsTrigger>
         <TabsTrigger value="outreach">Outreach</TabsTrigger>
         <TabsTrigger value="agent">Agent</TabsTrigger>
@@ -198,6 +200,9 @@ export function CommandTabs({
         <TabsTrigger value="bni">BNI</TabsTrigger>
       </TabsList>
 
+      <TabsContent value="company" forceMount className="mt-4 data-[state=inactive]:hidden">
+        <AiCompany canManage={canManage} />
+      </TabsContent>
       <TabsContent value="radar" forceMount className="mt-4 data-[state=inactive]:hidden">
         <LeadRadar leads={leads} placesConfigured={placesConfigured} />
       </TabsContent>
