@@ -91,3 +91,20 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
 export function cancelSpeech(): void {
   if (isSpeechSynthesisSupported()) window.speechSynthesis.cancel();
 }
+
+/**
+ * "Unlock" speech synthesis. Browsers only allow speak() once it's been invoked
+ * from a real user gesture; Vetri's replies come after an async step (voice
+ * recognition / the AI call), which no longer counts. Calling this from the tap
+ * that starts the interaction (a silent empty utterance) unlocks it so the later
+ * reply is allowed to play. Safe to call repeatedly.
+ */
+export function primeSpeech(): void {
+  if (!isSpeechSynthesisSupported()) return;
+  try {
+    window.speechSynthesis.resume();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  } catch {
+    /* ignore */
+  }
+}

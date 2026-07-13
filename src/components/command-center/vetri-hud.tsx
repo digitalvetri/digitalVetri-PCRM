@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Activity, AlertTriangle, BrainCircuit, Cpu, Database, Maximize2, Minimize2, Mic, Play, RadioTower, Rocket, Sparkles, Target } from "lucide-react";
 import { formatINR, cn } from "@/lib/utils";
+import { primeSpeech } from "@/lib/speech";
 
 // ---------------------------------------------------------------
 // Types
@@ -114,6 +115,7 @@ export function VetriHud({ vitals, providers, counts }: { vitals: VetriVitals; p
   const online = providers.filter((p) => p.connected).length;
 
   function talkToVetri() {
+    primeSpeech(); // unlock TTS within this real tap so Vetri's reply can speak
     window.dispatchEvent(new CustomEvent("vetri:talk"));
   }
   async function runAllShifts() {

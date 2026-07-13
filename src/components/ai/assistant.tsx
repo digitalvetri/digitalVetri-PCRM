@@ -14,6 +14,7 @@ import {
   hasVoiceFor,
   speak,
   cancelSpeech,
+  primeSpeech,
   type SpeechRecognitionLike,
 } from "@/lib/speech";
 
@@ -554,6 +555,7 @@ export function AiAssistant() {
   // Tap the mic: start listening (auto-sends what you say) or stop if already on.
   function micTap() {
     if (!voiceInSupported) return;
+    primeSpeech(); // unlock TTS within this tap so the reply can speak
     if (armedRef.current) disarm();
     else arm("");
   }
@@ -822,7 +824,10 @@ export function AiAssistant() {
                   {SUGGESTIONS.map((s) => (
                     <button
                       key={s}
-                      onClick={() => send(s)}
+                      onClick={() => {
+                        primeSpeech();
+                        send(s);
+                      }}
                       className="block w-full rounded-lg border bg-background px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
                     >
                       {s}
@@ -835,6 +840,7 @@ export function AiAssistant() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                primeSpeech();
                 send(input);
               }}
               className="flex items-center gap-2 border-t p-3"
