@@ -201,11 +201,14 @@ export function AiAssistant() {
       // recognition, so on phones we use tap-to-talk (the mic button) instead.
       setVoiceOn(localStorage.getItem(VOICE_KEY) !== "0");
       if (isMobileDevice()) {
+        // Phones can't do continuous background listening — use tap-to-talk.
         setWakeOn(false);
         setClapOn(false);
       } else {
+        // Desktop: both the "Vetri" wake word AND clap are ON by default, so you
+        // can trigger Vetri by speaking or clapping from any module.
         setWakeOn(localStorage.getItem(WAKE_KEY) !== "0");
-        setClapOn(localStorage.getItem(CLAP_KEY) === "1");
+        setClapOn(localStorage.getItem(CLAP_KEY) !== "0");
       }
       const storedLang = localStorage.getItem(LANG_KEY);
       // Default English so English commands ("open calendar") are recognised;
@@ -250,7 +253,7 @@ export function AiAssistant() {
         disarm();
         sendRef.current(q, true);
       }
-    }, 1100);
+    }, 700);
   }, [disarm]);
   // When Vetri is woken by a clap or the "Talk to Vetri" button (not the
   // always-on wake word), nothing is feeding the question buffer — so start a
@@ -325,6 +328,8 @@ export function AiAssistant() {
     const Ctor = getSpeechCtor();
     if (!Ctor) return;
 
+    let alive = false; // is a recognizer currently running?
+
     function start() {
       if (!wakeOnRef.current) return;
       const rec = new Ctor!();
@@ -357,34 +362,49 @@ export function AiAssistant() {
         }
       };
       rec.onerror = (ev) => {
+        alive = false;
         if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
           toast.error("Microphone blocked. Allow mic access to use the “Vetri” wake word.");
           setWakeOn(false);
         }
+        // Other errors (network/no-speech/aborted) are recoverable — the
+        // keep-alive below will restart the recognizer.
       };
       rec.onend = () => {
+        alive = false;
         if (!wakeOnRef.current) return;
         try {
           rec.start();
+          alive = true;
         } catch {
-          setTimeout(() => wakeOnRef.current && start(), 400);
+          /* keep-alive will retry */
         }
       };
       wakeRecRef.current = rec;
       try {
         rec.start();
+        alive = true;
       } catch {
         /* already started — ignore */
       }
     }
     start();
 
+    // Keep-alive: browsers silently stop recognition (timeouts, network blips).
+    // If it's not running and we're not mid-question, restart it — so Vetri is
+    // reliably always listening.
+    const keepAlive = setInterval(() => {
+      if (wakeOnRef.current && !alive && !armedRef.current) start();
+    }, 2500);
+
     return () => {
       wakeOnRef.current = false;
+      clearInterval(keepAlive);
       const rec = wakeRecRef.current;
       if (rec) {
         rec.onend = null;
         rec.onresult = null;
+        rec.onerror = null;
         rec.stop();
       }
       wakeRecRef.current = null;
