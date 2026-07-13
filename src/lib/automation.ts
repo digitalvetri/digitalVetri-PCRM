@@ -52,7 +52,7 @@ export async function getAutomationConfig(): Promise<AutomationConfig> {
     digestChannel:
       v.digestChannel === "whatsapp" || v.digestChannel === "email" ? v.digestChannel : "none",
     digestTo: typeof v.digestTo === "string" ? v.digestTo : "",
-    batchSize: typeof v.batchSize === "number" ? Math.min(12, Math.max(1, v.batchSize)) : 5,
+    batchSize: typeof v.batchSize === "number" ? Math.min(25, Math.max(1, v.batchSize)) : 5,
     autoDraft: Boolean(v.autoDraft),
   };
 }

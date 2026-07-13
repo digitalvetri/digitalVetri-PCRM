@@ -9,8 +9,11 @@ import {
   AiProviderForm,
 } from "@/components/settings/settings-forms";
 import { TeamManager, type TeamMember } from "@/components/settings/team-manager";
+import { AutomationPanel } from "@/components/command-center/automation-panel";
 import { getCurrentUser, roleCan } from "@/lib/rbac";
 import { loadSettings } from "@/lib/settings";
+import { getAutomationConfig } from "@/lib/automation";
+import { isPlacesConfigured } from "@/lib/places";
 import { prisma } from "@/lib/prisma";
 import { BRAND } from "@/lib/constants";
 import { initials, enumLabel } from "@/lib/utils";
@@ -25,8 +28,22 @@ export default async function SettingsPage() {
 
   const canManage = roleCan(user.role, "settings.manage");
   const canManageUsers = roleCan(user.role, "users.manage");
+  const canLeadEngine = roleCan(user.role, "commandCenter.manage");
 
   const settings = await loadSettings();
+  const [automation, agentRunsRaw] = canLeadEngine
+    ? await Promise.all([
+        getAutomationConfig(),
+        prisma.agentRun.findMany({ orderBy: { createdAt: "desc" }, take: 8 }),
+      ])
+    : [null, []];
+  const agentRuns = agentRunsRaw.map((r) => ({
+    id: r.id,
+    createdAt: r.createdAt.toISOString(),
+    leadsFound: r.leadsFound,
+    sent: r.sent,
+    summary: r.summary,
+  }));
   const users: TeamMember[] = canManageUsers
     ? await prisma.user.findMany({
         // Employees are managed in the Team module, not the settings user list.
@@ -52,6 +69,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="company">Company Profile</TabsTrigger>
           <TabsTrigger value="ai">AI Provider</TabsTrigger>
+          {canLeadEngine && <TabsTrigger value="leads">Lead Engine</TabsTrigger>}
           {canManageUsers && <TabsTrigger value="team">Team &amp; Roles</TabsTrigger>}
           <TabsTrigger value="about">About</TabsTrigger>
         </TabsList>
@@ -91,6 +109,13 @@ export default async function SettingsPage() {
         <TabsContent value="ai">
           <AiProviderForm initialProvider={settings.aiProvider} disabled={!canManage} />
         </TabsContent>
+
+        {/* Lead Engine — 24/7 discovery config */}
+        {canLeadEngine && automation && (
+          <TabsContent value="leads">
+            <AutomationPanel config={automation} recentRuns={agentRuns} placesConfigured={isPlacesConfigured()} />
+          </TabsContent>
+        )}
 
         {/* Team & Roles */}
         {canManageUsers && (

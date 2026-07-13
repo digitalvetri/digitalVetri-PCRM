@@ -230,7 +230,7 @@ async function geminiGenerate(prompt: string, opts: GenerateOptions): Promise<st
   const client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = client.getGenerativeModel(
     {
-      model: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
       systemInstruction: opts.system,
       generationConfig: {
         temperature: opts.temperature ?? 0.4,
