@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { askAssistant, interpretVoice, VETRI_ROUTES } from "@/lib/ai/assistant";
 import { matchCompanies } from "@/lib/ai/command";
+import { matchProspects } from "@/lib/ai/actions";
 import { formatINR } from "@/lib/utils";
 
 const schema = z.object({
@@ -66,6 +67,59 @@ export async function POST(req: Request) {
         return { kind: "clarify", say: (ta ? "பல கிளையண்ட்கள்: " : "I found a few: ") + names + (ta ? ". எது?" : ". Which one exactly?") };
       }
       return { kind: "clarify", say: ta ? `"${r.company}" கிடைக்கவில்லை. முதலில் சேர்க்கவா?` : `I couldn't find "${r.company}". Add them first?` };
+    }
+
+    if (r.intent === "create_task" && r.title?.trim()) {
+      const due = r.dueDate ? (ta ? ` (${r.dueDate})` : ` (due ${r.dueDate})` ) : "";
+      return {
+        kind: "confirm",
+        action: "create_task",
+        params: { title: r.title.trim(), dueDate: r.dueDate, priority: r.priority },
+        title: r.title.trim(),
+        say: ta ? `பணி “${r.title.trim()}”${due} உருவாக்கவா?` : `Create task “${r.title.trim()}”${due}? Tap Save.`,
+      };
+    }
+
+    if (r.intent === "create_note" && r.company?.trim() && r.note?.trim()) {
+      const m = await matchCompanies(r.company);
+      if (m.length === 1) {
+        return {
+          kind: "confirm",
+          action: "create_note",
+          params: { companyId: m[0].id, companyName: m[0].name, content: r.note.trim() },
+          title: m[0].name,
+          say: ta ? `${m[0].name} க்கு குறிப்பு சேர்க்கவா?` : `Add this note to ${m[0].name}? Tap Save.`,
+        };
+      }
+      return { kind: "clarify", say: m.length ? (ta ? "எந்த கிளையண்ட்?" : "Which client exactly?") : (ta ? `"${r.company}" கிடைக்கவில்லை.` : `I couldn't find "${r.company}".`) };
+    }
+
+    if (r.intent === "schedule_meeting" && r.company?.trim() && r.dueDate) {
+      const m = await matchCompanies(r.company);
+      if (m.length === 1) {
+        return {
+          kind: "confirm",
+          action: "schedule_meeting",
+          params: { companyId: m[0].id, companyName: m[0].name, title: r.title, scheduledAt: r.dueDate },
+          title: `${m[0].name} · ${r.dueDate}`,
+          say: ta ? `${m[0].name} உடன் ${r.dueDate} அன்று கூட்டம் நிர்ணயிக்கவா?` : `Schedule a meeting with ${m[0].name} on ${r.dueDate}? Tap Save.`,
+        };
+      }
+      return { kind: "clarify", say: m.length ? (ta ? "எந்த கிளையண்ட்?" : "Which client exactly?") : (ta ? `"${r.company}" கிடைக்கவில்லை.` : `I couldn't find "${r.company}".`) };
+    }
+
+    if (r.intent === "create_followup" && r.company?.trim() && r.dueDate) {
+      const p = await matchProspects(r.company);
+      if (p.length === 1) {
+        return {
+          kind: "confirm",
+          action: "create_followup",
+          params: { prospectId: p[0].id, companyName: p[0].companyName, dueAt: r.dueDate, channel: r.channel, notes: r.note },
+          title: `${p[0].companyName} · ${r.dueDate}`,
+          say: ta ? `${p[0].companyName} க்கு ${r.dueDate} அன்று பின்தொடர்தல் வைக்கவா?` : `Set a follow-up for ${p[0].companyName} on ${r.dueDate}? Tap Save.`,
+        };
+      }
+      return { kind: "clarify", say: p.length ? (ta ? "எந்த டீல்?" : "Which deal exactly?") : (ta ? `"${r.company}" க்கு செயலில் உள்ள டீல் இல்லை.` : `No active deal found for "${r.company}".`) };
     }
 
     // Answer (or an under-specified command → just reply).

@@ -4,6 +4,7 @@ import { generateJSON, generateText } from "@/lib/ai/provider";
 import { CEO_OS_SYSTEM } from "@/lib/ai/ceo-os";
 import { getCommandCenterSnapshot, targetFunnel } from "@/lib/command-center";
 import { getLatestDeptReports } from "@/lib/ai/departments";
+import { istDateInputValue } from "@/lib/time";
 import { formatINR } from "@/lib/utils";
 
 /**
@@ -92,8 +93,18 @@ export const VETRI_ROUTES: Record<string, { href: string; label: string }> = {
   settings: { href: "/settings", label: "Settings" },
 };
 
+export type VoiceIntent =
+  | "navigate"
+  | "add_company"
+  | "record_payment"
+  | "create_task"
+  | "create_note"
+  | "schedule_meeting"
+  | "create_followup"
+  | "answer";
+
 export interface VoiceResult {
-  intent: "navigate" | "add_company" | "record_payment" | "answer";
+  intent: VoiceIntent;
   destination?: string | null;
   name?: string | null;
   company?: string | null;
@@ -105,11 +116,17 @@ export interface VoiceResult {
   email?: string | null;
   website?: string | null;
   note?: string | null;
+  title?: string | null;
+  dueDate?: string | null; // yyyy-MM-dd
+  priority?: string | null;
+  channel?: string | null;
   reply: string;
 }
 
 const voiceSchema = z.object({
-  intent: z.enum(["navigate", "add_company", "record_payment", "answer"]).catch("answer"),
+  intent: z
+    .enum(["navigate", "add_company", "record_payment", "create_task", "create_note", "schedule_meeting", "create_followup", "answer"])
+    .catch("answer"),
   destination: z.string().nullable().catch(null),
   name: z.string().nullable().catch(null),
   company: z.string().nullable().catch(null),
@@ -121,6 +138,10 @@ const voiceSchema = z.object({
   email: z.string().nullable().catch(null),
   website: z.string().nullable().catch(null),
   note: z.string().nullable().catch(null),
+  title: z.string().nullable().catch(null),
+  dueDate: z.string().nullable().catch(null),
+  priority: z.string().nullable().catch(null),
+  channel: z.string().nullable().catch(null),
   reply: z.string().catch(""),
 });
 
@@ -152,18 +173,24 @@ export async function interpretVoice(
 
 ${convo ? `Conversation so far:\n${convo}\n\n` : ""}The boss just said (Tamil or English): "${message}"
 
+Today is ${istDateInputValue(new Date())} (IST). Output any date as "dueDate" in yyyy-MM-dd, resolving "today/tomorrow/next Monday" against today.
+
 Decide the intent:
-- "navigate": they want to OPEN a screen. Set "destination" to ONE of: dashboard, command-center, ai-company, companies, prospects, meetings, proposals, follow-ups, tasks, calendar, reports, team, settings. (e.g. "open calendar"/"கேலண்டர் திற" → calendar).
-- "add_company": onboarding/adding a new client. Extract "name" + any industry/city/state/phone/email/website mentioned.
-- "record_payment": a payment received. Extract "company" and "amount" as a plain rupee number (convert spoken words, "ஐம்பதாயிரம்"/"fifty thousand" → 50000). Optional "note".
+- "navigate": they want to OPEN a screen. Set "destination" to ONE of: dashboard, command-center, ai-company, companies, prospects, meetings, proposals, follow-ups, tasks, calendar, reports, team, settings.
+- "add_company": adding a new client. Extract "name" + any industry/city/state/phone/email/website.
+- "record_payment": a payment received. Extract "company" and "amount" (rupee number; convert spoken words). Optional "note".
+- "create_task": create a to-do / reminder for the boss. Extract "title" (the task), optional "dueDate", optional "priority" (URGENT/HIGH/MEDIUM/LOW).
+- "create_note": add a note about a client. Extract "company" and "note" (the note text).
+- "schedule_meeting": book a meeting with a client. Extract "company", optional "title", and "dueDate" (the meeting date).
+- "create_followup": set a follow-up/reminder for a client's deal. Extract "company", "dueDate", optional "channel" (CALL/EMAIL/WHATSAPP/MEETING), optional "note".
 - "answer": a question, chit-chat or follow-up. Put a genuine, conversational answer in "reply".
 
 Live data: ${JSON.stringify(snapshot)}
 Target math: ${JSON.stringify(funnel ?? "no target set")}
 Team reports: ${JSON.stringify(teamReports)}
 
-For navigate/add_company/record_payment, "reply" is a short natural spoken confirmation. For "answer", "reply" is specific and grounded in the data above, usually 2-5 sentences — and it's fine to ask a clarifying question back if a smart human would. ${langLine} Only extract fields clearly stated; use null otherwise.`,
-    `{ "intent": "navigate"|"add_company"|"record_payment"|"answer", "destination": string|null, "name": string|null, "company": string|null, "amount": number|null, "industry": string|null, "city": string|null, "state": string|null, "phone": string|null, "email": string|null, "website": string|null, "note": string|null, "reply": string }`,
+For any action intent, "reply" is a short natural spoken confirmation. For "answer", "reply" is specific and grounded in the data above, usually 2-5 sentences — and it's fine to ask a clarifying question back if a smart human would. ${langLine} Only extract fields clearly stated; use null otherwise.`,
+    `{ "intent": "navigate"|"add_company"|"record_payment"|"create_task"|"create_note"|"schedule_meeting"|"create_followup"|"answer", "destination": string|null, "name": string|null, "company": string|null, "amount": number|null, "industry": string|null, "city": string|null, "state": string|null, "phone": string|null, "email": string|null, "website": string|null, "note": string|null, "title": string|null, "dueDate": string|null, "priority": string|null, "channel": string|null, "reply": string }`,
     { temperature: 0.45, maxTokens: 1100 },
     voiceSchema
   );
