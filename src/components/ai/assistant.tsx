@@ -427,15 +427,20 @@ export function AiAssistant() {
     };
   }, [clapOn, arm]);
 
-  // The Vetri HUD's "Talk to Vetri" button dispatches this — open + start
-  // listening immediately (then auto-send what you say).
+  // "vetri:talk" (HUD button) opens + starts listening; "vetri:open" (top-bar
+  // button, available on every page) just opens the panel.
   React.useEffect(() => {
     const onTalk = () => {
       setOpen(true);
       arm("");
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener("vetri:talk", onTalk);
-    return () => window.removeEventListener("vetri:talk", onTalk);
+    window.addEventListener("vetri:open", onOpen);
+    return () => {
+      window.removeEventListener("vetri:talk", onTalk);
+      window.removeEventListener("vetri:open", onOpen);
+    };
   }, [arm]);
 
   const hasUserMessage = messages.some((m) => m.role === "user");

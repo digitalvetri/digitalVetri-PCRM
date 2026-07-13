@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { Menu } from "lucide-react";
+import { Menu, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/logo";
 import { GlobalSearch } from "@/components/layout/global-search";
+import { primeSpeech } from "@/lib/speech";
 
 export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
+  function openVetri() {
+    primeSpeech(); // unlock TTS within this tap
+    window.dispatchEvent(new CustomEvent("vetri:open"));
+  }
+
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-md sm:px-6">
       <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open menu">
@@ -23,6 +29,10 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={openVetri} className="gap-1.5" aria-label="Open Vetri">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <span className="hidden sm:inline">Vetri</span>
+        </Button>
         <UserButton afterSignOutUrl="/sign-in" />
       </div>
     </header>

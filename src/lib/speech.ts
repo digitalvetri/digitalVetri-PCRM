@@ -74,14 +74,18 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
   const target = (opts.lang ?? "en-IN").toLowerCase();
   u.lang = opts.lang ?? "en-IN";
   u.rate = opts.rate ?? 1;
-  // Explicitly select a matching installed voice — setting `lang` alone doesn't
-  // always pick e.g. a Tamil voice; without one the browser reads it poorly.
+  // Voice selection: for English, DON'T force a specific voice — the browser's
+  // default is the most reliable. Forcing an exact locale (e.g. macOS "Rishi"
+  // en-IN) can select a listed-but-not-installed voice that plays SILENTLY.
+  // Only override the voice for non-English (e.g. Tamil), preferring a local one.
   if (!voiceCache.length) refreshVoices();
   const short = target.split("-")[0];
-  const match =
-    voiceCache.find((v) => v.lang?.toLowerCase() === target) ??
-    voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short));
-  if (match) u.voice = match;
+  if (short !== "en") {
+    const match =
+      voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short) && v.localService) ??
+      voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short));
+    if (match) u.voice = match;
+  }
   // Chrome can leave synthesis in a paused state after a cancel(); resume() +
   // speak() unsticks it so the utterance actually plays.
   window.speechSynthesis.resume();
