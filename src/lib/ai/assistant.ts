@@ -75,6 +75,89 @@ export interface AssistantResult {
 
 export type AssistantLang = "en" | "ta";
 
+// Canonical navigation destinations Vetri can open by voice.
+export const VETRI_ROUTES: Record<string, { href: string; label: string }> = {
+  dashboard: { href: "/", label: "Dashboard" },
+  "command-center": { href: "/command-center", label: "Command Center" },
+  "ai-company": { href: "/company", label: "AI Company" },
+  companies: { href: "/companies", label: "Clients" },
+  prospects: { href: "/prospects", label: "Prospects" },
+  meetings: { href: "/meetings", label: "Meetings" },
+  proposals: { href: "/proposals", label: "Proposals" },
+  "follow-ups": { href: "/follow-ups", label: "Follow-ups" },
+  tasks: { href: "/tasks", label: "Tasks" },
+  calendar: { href: "/calendar", label: "Calendar" },
+  reports: { href: "/reports", label: "Reports & Analytics" },
+  team: { href: "/team", label: "Team" },
+  settings: { href: "/settings", label: "Settings" },
+};
+
+export interface VoiceResult {
+  intent: "navigate" | "add_company" | "record_payment" | "answer";
+  destination?: string | null;
+  name?: string | null;
+  company?: string | null;
+  amount?: number | null;
+  industry?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  note?: string | null;
+  reply: string;
+}
+
+const voiceSchema = z.object({
+  intent: z.enum(["navigate", "add_company", "record_payment", "answer"]).catch("answer"),
+  destination: z.string().nullable().catch(null),
+  name: z.string().nullable().catch(null),
+  company: z.string().nullable().catch(null),
+  amount: z.coerce.number().nullable().catch(null),
+  industry: z.string().nullable().catch(null),
+  city: z.string().nullable().catch(null),
+  state: z.string().nullable().catch(null),
+  phone: z.string().nullable().catch(null),
+  email: z.string().nullable().catch(null),
+  website: z.string().nullable().catch(null),
+  note: z.string().nullable().catch(null),
+  reply: z.string().catch(""),
+});
+
+/**
+ * ONE grounded call that both understands commands and answers questions —
+ * used by the voice path so a Tamil question is never misrouted as a command.
+ */
+export async function interpretVoice(message: string, lang: AssistantLang = "en"): Promise<VoiceResult> {
+  const [snapshot, deptReports] = await Promise.all([getCommandCenterSnapshot(), getLatestDeptReports()]);
+  const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);
+  const teamReports = deptReports.map((r) => ({ department: r.deptTitle, headline: r.report.headline, risks: r.report.risks }));
+  const langLine =
+    lang === "ta"
+      ? "The 'reply' MUST be in Tamil (தமிழ்) using Tamil script."
+      : "The 'reply' must be in clear English.";
+  return generateJSON<VoiceResult>(
+    `You are Vetri, the founder's AI CEO. Decide what the founder wants and respond.
+
+What they said (Tamil or English): "${message}"
+
+Intents:
+- "navigate": they want to OPEN a screen. Set "destination" to ONE of: dashboard, command-center, ai-company, companies, prospects, meetings, proposals, follow-ups, tasks, calendar, reports, team, settings. (e.g. "open calendar"/"கேலண்டர் திற" → calendar).
+- "add_company": onboarding/adding a new client. Extract "name" + any industry/city/state/phone/email/website mentioned.
+- "record_payment": a payment received. Extract "company" and "amount" as a plain rupee number (convert spoken words, "ஐம்பதாயிரம்"/"fifty thousand" → 50000). Optional "note".
+- "answer": a QUESTION or anything else. Put the full, specific, revenue-first answer in "reply", grounded in the data below.
+
+Live data: ${JSON.stringify(snapshot)}
+Target math: ${JSON.stringify(funnel ?? "no target set")}
+Team reports: ${JSON.stringify(teamReports)}
+
+Rules: For navigate/add_company/record_payment, "reply" is a SHORT spoken confirmation. For "answer", "reply" is the actual answer (under 160 words, end with a 2-4 step action plan when relevant). ${langLine} Only extract fields clearly stated; use null otherwise.`,
+    `{ "intent": "navigate"|"add_company"|"record_payment"|"answer", "destination": string|null, "name": string|null, "company": string|null, "amount": number|null, "industry": string|null, "city": string|null, "state": string|null, "phone": string|null, "email": string|null, "website": string|null, "note": string|null, "reply": string }`,
+    { temperature: 0.3, maxTokens: 1200 },
+    voiceSchema
+  );
+}
+
 /**
  * The fast, single-call CEO answer used by the voice path (no intent
  * classification round-trip — straight to a grounded answer). Answers in the

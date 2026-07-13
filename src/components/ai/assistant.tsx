@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   getSpeechCtor,
   isSpeechSynthesisSupported,
+  hasVoiceFor,
   speak,
   cancelSpeech,
   type SpeechRecognitionLike,
@@ -55,15 +56,6 @@ function detectNav(text: string): { href: string; label: string } | null {
   if (!NAV_TRIGGERS.some((w) => t.includes(w))) return null;
   for (const n of NAV_MAP) if (n.keys.some((k) => t.includes(k))) return { href: n.href, label: n.label };
   return null;
-}
-const CMD_TRIGGERS = [
-  "add company", "new company", "onboard", "add client", "new client",
-  "payment", "received", "paid", "record ",
-  "நிறுவனம்", "கிளையண்ட்", "சேர்", "பணம்", "பேமெண்ட்", "வந்தது", "பெற்ற",
-];
-function looksLikeCommand(text: string): boolean {
-  const t = text.toLowerCase();
-  return CMD_TRIGGERS.some((w) => t.includes(w));
 }
 
 interface CeoBriefing {
@@ -170,11 +162,11 @@ export function AiAssistant() {
     setVoiceInSupported(getSpeechCtor() !== null);
     setVoiceOutSupported(isSpeechSynthesisSupported());
     try {
-      // Voice output + clap-to-activate default ON (opt-OUT), so Vetri responds
-      // and listens the moment you enter the app. Wake word stays opt-in (it and
-      // clap both use the mic; running one avoids contention).
+      // Voice OUTPUT defaults on (Vetri speaks its answers). Hands-free LISTENING
+      // (clap + wake) defaults OFF and is opt-in — browser clap detection is raw
+      // amplitude and false-triggers on noise, which made Vetri "talk to itself".
       setVoiceOn(localStorage.getItem(VOICE_KEY) !== "0");
-      setClapOn(localStorage.getItem(CLAP_KEY) !== "0");
+      setClapOn(localStorage.getItem(CLAP_KEY) === "1");
       setWakeOn(localStorage.getItem(WAKE_KEY) === "1");
       const storedLang = localStorage.getItem(LANG_KEY);
       const initialLang: Lang = storedLang === "en" ? "en" : "ta"; // default Tamil
@@ -367,6 +359,7 @@ export function AiAssistant() {
     let raf = 0;
     let lastClap = 0;
     let firstClapAt = 0;
+    let clapCooldownUntil = 0;
     let cancelled = false;
 
     const AC =
@@ -396,18 +389,26 @@ export function AiAssistant() {
 
         const tick = () => {
           if (cancelled) return;
+          const now = performance.now();
+          // Never sample while Vetri is speaking (else it hears its own voice and
+          // re-triggers), nor during the cooldown right after an activation.
+          if ((typeof window !== "undefined" && window.speechSynthesis?.speaking) || now < clapCooldownUntil || armedRef.current) {
+            firstClapAt = 0;
+            raf = requestAnimationFrame(tick);
+            return;
+          }
           analyser.getByteTimeDomainData(data);
           // Peak deviation from the 128 midpoint = loudness of a transient.
           let peak = 0;
           for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i] - 128));
-          const now = performance.now();
-          // A clap is a sharp spike; debounce 250ms so one clap ≠ many.
-          if (peak > 90 && now - lastClap > 250) {
+          // A clap is a SHARP, loud spike. High threshold + a required quiet gap
+          // between the two claps rejects speech and steady noise.
+          if (peak > 118 && now - lastClap > 200) {
             lastClap = now;
-            if (now - firstClapAt < 900) {
-              // second clap within the window → activate
+            if (firstClapAt && now - firstClapAt < 700 && now - firstClapAt > 120) {
               firstClapAt = 0;
-              if (!(typeof window !== "undefined" && window.speechSynthesis?.speaking)) arm("");
+              clapCooldownUntil = now + 4000; // don't listen again for 4s
+              arm("");
             } else {
               firstClapAt = now;
             }
@@ -429,15 +430,13 @@ export function AiAssistant() {
     };
   }, [clapOn, arm]);
 
-  // The Vetri HUD's "Talk to Vetri" button dispatches this — open + greet as boss.
+  // The Vetri HUD's "Talk to Vetri" button dispatches this — just opens the
+  // panel (no auto-greeting; the user taps the mic or types).
   React.useEffect(() => {
-    const onTalk = () => {
-      setOpen(true);
-      arm("");
-    };
+    const onTalk = () => setOpen(true);
     window.addEventListener("vetri:talk", onTalk);
     return () => window.removeEventListener("vetri:talk", onTalk);
-  }, [arm]);
+  }, []);
 
   const hasUserMessage = messages.some((m) => m.role === "user");
 
@@ -451,9 +450,8 @@ export function AiAssistant() {
       const msg: Message = { role: "assistant", content: formatBriefing(b), speak: b.spoken };
       setMessages([msg]);
       setBriefingState("done");
-      // Don't auto-narrate the whole briefing if the panel was opened by a wake
-      // ("Vetri") — the user is mid-question; speaking over them is jarring.
-      if (voiceOn && !armedRef.current && b.spoken) speak(b.spoken);
+      // The briefing is shown, never auto-spoken — Vetri only speaks when you
+      // ask it something (avoids it "talking by itself" on open).
     } catch {
       setMessages([
         {
@@ -464,7 +462,7 @@ export function AiAssistant() {
       ]);
       setBriefingState("error");
     }
-  }, [voiceOn]);
+  }, []);
 
   // Load the morning briefing the first time the panel opens.
   React.useEffect(() => {
@@ -537,7 +535,14 @@ export function AiAssistant() {
         /* ignore */
       }
       langRef.current = next;
-      toast.success(next === "ta" ? "வெற்றி இனி தமிழில் பேசும்." : "Vetri will speak English.");
+      if (next === "ta") {
+        toast.success("வெற்றி இனி தமிழில் பேசும். (Speak Tamil to it.)");
+        if (!hasVoiceFor("ta")) {
+          toast.warning("No Tamil voice on this device — replies show in Tamil text but may not sound right. Try Android Chrome.");
+        }
+      } else {
+        toast.success("Vetri will speak English.");
+      }
       return next;
     });
   }
@@ -597,51 +602,51 @@ export function AiAssistant() {
     setInput("");
     setMessages((m) => [...m, { role: "user", content: question }]);
 
-    // 1. Navigation — instant, no AI, works from anywhere in the app.
-    const nav = detectNav(question);
-    if (nav) {
-      const say = lang === "ta" ? `${nav.label} திறக்கிறேன்.` : `Opening ${nav.label}.`;
-      setMessages((m) => [...m, { role: "assistant", content: say }]);
-      sayOut(say, forceSpeak);
-      setOpen(false);
-      router.push(nav.href);
-      return;
+    // Fast path for TYPED English navigation only — instant, no AI. Voice and
+    // Tamil go through the unified interpreter below so they're never misrouted.
+    if (!forceSpeak && lang === "en") {
+      const nav = detectNav(question);
+      if (nav) {
+        const say = `Opening ${nav.label}.`;
+        setMessages((m) => [...m, { role: "assistant", content: say }]);
+        sayOut(say, forceSpeak);
+        setOpen(false);
+        router.push(nav.href);
+        return;
+      }
     }
 
     setLoading(true);
     try {
-      // 2. Command? (add company / record payment) — extract + confirm, never auto-write.
-      if (looksLikeCommand(question)) {
-        const res = await fetch("/api/assistant/command", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: question, lang }),
-        });
-        const c = await res.json();
-        if (res.ok && c.kind === "confirm") {
-          setMessages((m) => [...m, { role: "assistant", content: c.say, confirm: { action: c.action, params: c.params, title: c.title } }]);
-          sayOut(c.say, forceSpeak);
-          setLoading(false);
-          return;
-        }
-        if (res.ok && c.kind === "clarify") {
-          setMessages((m) => [...m, { role: "assistant", content: c.say }]);
-          sayOut(c.say, forceSpeak);
-          setLoading(false);
-          return;
-        }
-        // c.kind === "chat" (or error) → fall through to a normal answer.
-      }
-
-      // 3. Chat — the fast grounded answer.
+      // One unified call: it understands commands (navigate / add company /
+      // record payment) AND answers questions — so a normal Tamil question is
+      // never mistaken for a command.
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, fast: forceSpeak, lang }),
+        body: JSON.stringify({ question, fast: true, lang }),
       });
-      const data = await res.json();
-      const content = data.answer ?? data.error ?? "Sorry, something went wrong.";
-      setMessages((m) => [...m, { role: "assistant", content, action: data.action }]);
+      const d = await res.json();
+
+      if (res.ok && d.kind === "navigate" && d.href) {
+        setMessages((m) => [...m, { role: "assistant", content: d.say }]);
+        sayOut(d.say, forceSpeak);
+        setOpen(false);
+        router.push(d.href);
+        return;
+      }
+      if (res.ok && d.kind === "confirm") {
+        setMessages((m) => [...m, { role: "assistant", content: d.say, confirm: { action: d.action, params: d.params, title: d.title } }]);
+        sayOut(d.say, forceSpeak);
+        return;
+      }
+      if (res.ok && d.kind === "clarify") {
+        setMessages((m) => [...m, { role: "assistant", content: d.say }]);
+        sayOut(d.say, forceSpeak);
+        return;
+      }
+      const content = d.answer ?? d.error ?? "Sorry, something went wrong.";
+      setMessages((m) => [...m, { role: "assistant", content, action: d.action }]);
       sayOut(content, forceSpeak);
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Network error. Please try again." }]);
@@ -682,30 +687,10 @@ export function AiAssistant() {
     setMessages((m) => m.map((mm, i) => (i === index ? { ...mm, confirm: undefined, content: mm.content + " (cancelled)" } : mm)));
   }
 
+  // No floating launcher — Vetri opens from the AI Company page (the HUD's
+  // "Talk to Vetri") via the `vetri:talk` event, or by voice wake/clap if on.
   return (
     <>
-      <motion.button
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30"
-        aria-label="AI CEO"
-      >
-        <AnimatePresence mode="wait">
-          {open ? (
-            <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}>
-              <X className="h-6 w-6" />
-            </motion.span>
-          ) : (
-            <motion.span key="s" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }}>
-              <Crown className="h-6 w-6" />
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </motion.button>
-
       <AnimatePresence>
         {open && (
           <motion.div
@@ -790,6 +775,14 @@ export function AiAssistant() {
                 className="min-w-[28px] rounded-md px-1.5 py-1 text-xs font-bold text-blue-100 transition-colors hover:bg-white/10 hover:text-white"
               >
                 {lang === "ta" ? "த" : "EN"}
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                title="Close"
+                aria-label="Close Vetri"
+                className="rounded-md p-1.5 text-blue-100 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
 

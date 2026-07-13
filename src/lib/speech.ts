@@ -34,6 +34,23 @@ export function isSpeechSynthesisSupported(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
 }
 
+// getVoices() is empty until the browser loads them asynchronously — cache them
+// and refresh on `voiceschanged` so voice selection (e.g. Tamil) actually works.
+let voiceCache: SpeechSynthesisVoice[] = [];
+function refreshVoices() {
+  if (isSpeechSynthesisSupported()) voiceCache = window.speechSynthesis.getVoices();
+}
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  refreshVoices();
+  window.speechSynthesis.addEventListener?.("voiceschanged", refreshVoices);
+}
+
+/** Does the browser/OS have a voice for this language code (e.g. "ta")? */
+export function hasVoiceFor(langShort: string): boolean {
+  if (!voiceCache.length) refreshVoices();
+  return voiceCache.some((v) => v.lang?.toLowerCase().startsWith(langShort.toLowerCase()));
+}
+
 /** Strip markdown/emoji so the spoken output is clean prose, not symbols. */
 function cleanForSpeech(text: string): string {
   return text
@@ -59,11 +76,11 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
   u.rate = opts.rate ?? 1;
   // Explicitly select a matching installed voice — setting `lang` alone doesn't
   // always pick e.g. a Tamil voice; without one the browser reads it poorly.
+  if (!voiceCache.length) refreshVoices();
   const short = target.split("-")[0];
-  const voices = window.speechSynthesis.getVoices();
   const match =
-    voices.find((v) => v.lang?.toLowerCase() === target) ??
-    voices.find((v) => v.lang?.toLowerCase().startsWith(short));
+    voiceCache.find((v) => v.lang?.toLowerCase() === target) ??
+    voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short));
   if (match) u.voice = match;
   window.speechSynthesis.speak(u);
 }
