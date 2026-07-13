@@ -32,7 +32,9 @@ ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
 COPY . .
-RUN npx prisma generate && npm run build
+# Build, then drop build-only caches from the image (not needed by `next start`)
+# to keep the final image smaller — the server's disk is shared with other stacks.
+RUN npx prisma generate && npm run build && rm -rf .next/cache node_modules/.cache
 
 ENV NODE_ENV=production
 ENV PORT=3000
