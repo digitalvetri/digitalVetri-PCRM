@@ -124,36 +124,47 @@ const voiceSchema = z.object({
   reply: z.string().catch(""),
 });
 
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 /**
  * ONE grounded call that both understands commands and answers questions —
  * used by the voice path so a Tamil question is never misrouted as a command.
+ * Takes recent conversation history so it feels like a real back-and-forth.
  */
-export async function interpretVoice(message: string, lang: AssistantLang = "en"): Promise<VoiceResult> {
+export async function interpretVoice(
+  message: string,
+  lang: AssistantLang = "en",
+  history: ChatTurn[] = []
+): Promise<VoiceResult> {
   const [snapshot, deptReports] = await Promise.all([getCommandCenterSnapshot(), getLatestDeptReports()]);
   const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);
   const teamReports = deptReports.map((r) => ({ department: r.deptTitle, headline: r.report.headline, risks: r.report.risks }));
   const langLine =
     lang === "ta"
-      ? "The 'reply' MUST be in Tamil (தமிழ்) using Tamil script."
-      : "The 'reply' must be in clear English.";
+      ? "Write 'reply' in natural, spoken Tamil (தமிழ்) — like a real person talking, not a stiff translation."
+      : "Write 'reply' in natural, warm, spoken English.";
+  const convo = history.slice(-6).map((t) => `${t.role === "user" ? "Boss" : "Vetri"}: ${t.content}`).join("\n");
   return generateJSON<VoiceResult>(
-    `You are Vetri, the founder's AI CEO. Decide what the founder wants and respond.
+    `You are Vetri — the founder's AI CEO and right hand. You are sharp, warm and human: you talk like a trusted chief-of-staff who knows the business cold, NOT like a robot reading a report. Natural sentences. Only make a list when the boss asks for steps. Follow the conversation so it flows.
 
-What they said (Tamil or English): "${message}"
+${convo ? `Conversation so far:\n${convo}\n\n` : ""}The boss just said (Tamil or English): "${message}"
 
-Intents:
+Decide the intent:
 - "navigate": they want to OPEN a screen. Set "destination" to ONE of: dashboard, command-center, ai-company, companies, prospects, meetings, proposals, follow-ups, tasks, calendar, reports, team, settings. (e.g. "open calendar"/"கேலண்டர் திற" → calendar).
 - "add_company": onboarding/adding a new client. Extract "name" + any industry/city/state/phone/email/website mentioned.
 - "record_payment": a payment received. Extract "company" and "amount" as a plain rupee number (convert spoken words, "ஐம்பதாயிரம்"/"fifty thousand" → 50000). Optional "note".
-- "answer": a QUESTION or anything else. Put the full, specific, revenue-first answer in "reply", grounded in the data below.
+- "answer": a question, chit-chat or follow-up. Put a genuine, conversational answer in "reply".
 
 Live data: ${JSON.stringify(snapshot)}
 Target math: ${JSON.stringify(funnel ?? "no target set")}
 Team reports: ${JSON.stringify(teamReports)}
 
-Rules: For navigate/add_company/record_payment, "reply" is a SHORT spoken confirmation. For "answer", "reply" is the actual answer (under 160 words, end with a 2-4 step action plan when relevant). ${langLine} Only extract fields clearly stated; use null otherwise.`,
+For navigate/add_company/record_payment, "reply" is a short natural spoken confirmation. For "answer", "reply" is specific and grounded in the data above, usually 2-5 sentences — and it's fine to ask a clarifying question back if a smart human would. ${langLine} Only extract fields clearly stated; use null otherwise.`,
     `{ "intent": "navigate"|"add_company"|"record_payment"|"answer", "destination": string|null, "name": string|null, "company": string|null, "amount": number|null, "industry": string|null, "city": string|null, "state": string|null, "phone": string|null, "email": string|null, "website": string|null, "note": string|null, "reply": string }`,
-    { temperature: 0.3, maxTokens: 1200 },
+    { temperature: 0.45, maxTokens: 1100 },
     voiceSchema
   );
 }

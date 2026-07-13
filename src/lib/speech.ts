@@ -94,6 +94,15 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
 // --- Server TTS (plays real audio, bypassing a broken browser speech engine) ---
 
 let currentAudio: HTMLAudioElement | null = null;
+let speakingFailsafe: ReturnType<typeof setTimeout> | null = null;
+
+function clearAudio() {
+  if (speakingFailsafe) {
+    clearTimeout(speakingFailsafe);
+    speakingFailsafe = null;
+  }
+  currentAudio = null;
+}
 
 /** True if Vetri is currently speaking via EITHER the audio element or the browser engine. */
 export function isSpeaking(): boolean {
@@ -102,9 +111,14 @@ export function isSpeaking(): boolean {
 }
 
 /**
- * Speak via the server (Groq TTS) → play the returned audio through an <audio>
- * element. Returns true if it played, false if the server TTS was unavailable
- * (so the caller can fall back to the browser engine). English only.
+ * Speak via the server → play the returned audio through an <audio> element.
+ * Returns true if it played, false if server TTS was unavailable (caller falls
+ * back to the browser engine).
+ *
+ * ROBUST: the "is speaking" flag is cleared on ended/error AND by a duration-
+ * based failsafe — with the free voice the audio's `ended` event doesn't always
+ * fire, which previously left the flag stuck ON and made Vetri go permanently
+ * deaf after one answer.
  */
 export async function speakViaServer(text: string, lang: "en" | "ta" = "en"): Promise<boolean> {
   const clean = cleanForSpeech(text);
@@ -122,13 +136,26 @@ export async function speakViaServer(text: string, lang: "en" | "ta" = "en"): Pr
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     currentAudio = audio;
-    audio.onended = () => {
+    const done = () => {
       URL.revokeObjectURL(url);
-      if (currentAudio === audio) currentAudio = null;
+      if (currentAudio === audio) clearAudio();
+    };
+    audio.onended = done;
+    audio.onerror = done;
+    // Failsafe: clear the flag shortly after the audio's real duration (or a hard
+    // 25s cap) so it can never stick and leave Vetri deaf.
+    audio.onloadedmetadata = () => {
+      const d = audio.duration;
+      const ms = Number.isFinite(d) && d > 0 ? d * 1000 + 1200 : 25000;
+      if (speakingFailsafe) clearTimeout(speakingFailsafe);
+      speakingFailsafe = setTimeout(() => {
+        if (currentAudio === audio) clearAudio();
+      }, ms);
     };
     await audio.play();
     return true;
   } catch {
+    clearAudio();
     return false;
   }
 }
@@ -153,8 +180,8 @@ export function cancelSpeech(): void {
     } catch {
       /* ignore */
     }
-    currentAudio = null;
   }
+  clearAudio();
 }
 
 /**

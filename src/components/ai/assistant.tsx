@@ -719,7 +719,12 @@ export function AiAssistant() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, fast: true, lang }),
+        body: JSON.stringify({
+          question,
+          fast: true,
+          lang,
+          history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+        }),
       });
       const d = await res.json();
 

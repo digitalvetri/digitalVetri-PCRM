@@ -11,6 +11,11 @@ const schema = z.object({
   // Voice path: one unified interpret call (understands commands + answers).
   fast: z.boolean().optional(),
   lang: z.enum(["en", "ta"]).optional(),
+  // Recent conversation for a natural, remembered back-and-forth.
+  history: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(2000) }))
+    .max(12)
+    .optional(),
 });
 
 export const maxDuration = 120;
@@ -19,12 +24,12 @@ export async function POST(req: Request) {
   return withApi(async () => {
     const user = await requireUser("content.generate");
     enforceRateLimit(`ai:assistant:${user.id}`, 40, 60_000);
-    const { question, fast, lang = "en" } = schema.parse(await req.json());
+    const { question, fast, lang = "en", history = [] } = schema.parse(await req.json());
 
     if (!fast) return askAssistant(question, lang);
 
     const ta = lang === "ta";
-    const r = await interpretVoice(question, lang);
+    const r = await interpretVoice(question, lang, history);
 
     // Navigate — map to a real route; unknown destination falls back to an answer.
     if (r.intent === "navigate" && r.destination && VETRI_ROUTES[r.destination]) {
