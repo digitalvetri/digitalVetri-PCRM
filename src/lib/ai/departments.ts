@@ -19,6 +19,7 @@ import { generateJSON, generateText } from "@/lib/ai/provider";
 import { getCommandCenterSnapshot } from "@/lib/command-center";
 import { getRevenueSummary } from "@/lib/revenue";
 import { getRecurringSnapshot, getRenewalsDue } from "@/lib/recurring";
+import { getTeamOverview } from "@/lib/hr";
 import { istEndOfDay, istStartOfDay } from "@/lib/time";
 
 export const DEPT_KEYS = [
@@ -122,8 +123,8 @@ export const DEPARTMENTS: Record<DeptKey, Department> = {
   },
   people: {
     key: "people", title: "Head of People", emoji: "👥", group: "Corporate",
-    tagline: "Hiring, roles & team", owns: ["Hiring", "Roles", "Onboarding", "Culture"],
-    grounded: false, autoShift: false,
+    tagline: "Team, performance & attendance", owns: ["Team", "Performance", "Attendance", "Leave"],
+    grounded: true, autoShift: false,
     persona: `You are the Head of People (HR) at DigitalVetri. ${COMPANY_CONTEXT} You own hiring, role design, onboarding and team growth for a small, fast-growing Indian software team. You give practical guidance on when/whom to hire, job posts, interview structure and keeping a lean team effective.`,
   },
 };
@@ -223,6 +224,18 @@ async function gatherDeptContext(key: DeptKey): Promise<Record<string, unknown>>
       activeContracts: recurring.activeContracts,
       renewalsDue: renewals.map((r) => ({ company: r.companyName, renewalDate: r.renewalDate, amount: r.recurringAmount, overdue: r.overdue })),
       pipelineValue: snapshot.pipelineValue,
+    };
+  }
+
+  if (key === "people") {
+    const t = await getTeamOverview();
+    return {
+      headcount: t.headcount,
+      activeProjects: t.activeProjects,
+      pendingLeaveRequests: t.pendingLeave,
+      attendanceRatePct: t.attendanceRate,
+      avgPerformanceRating: t.avgRating,
+      reviewsLast60Days: t.reviewCount,
     };
   }
 

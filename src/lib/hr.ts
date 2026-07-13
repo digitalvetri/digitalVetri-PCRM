@@ -1,5 +1,5 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import type { LeaveType } from "@prisma/client";
+import type { LeaveType, ProjectStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api-error";
 import { istStartOfDay } from "@/lib/time";
@@ -170,4 +170,154 @@ export async function listEmployees() {
     include: { employeeProfile: true },
     orderBy: { createdAt: "desc" },
   });
+}
+
+// --- Projects ---
+
+export async function createProject(input: {
+  name: string;
+  companyId?: string | null;
+  description?: string | null;
+  status?: ProjectStatus;
+  startDate?: Date | null;
+  dueDate?: Date | null;
+  value?: number | null;
+}) {
+  if (!input.name?.trim()) throw new ApiError(400, "Project name is required.");
+  return prisma.project.create({
+    data: {
+      name: input.name.trim(),
+      companyId: input.companyId || undefined,
+      description: input.description || undefined,
+      status: input.status ?? "ACTIVE",
+      startDate: input.startDate || undefined,
+      dueDate: input.dueDate || undefined,
+      value: input.value ?? undefined,
+    },
+  });
+}
+
+export async function listProjects() {
+  return prisma.project.findMany({
+    orderBy: { createdAt: "desc" },
+    include: {
+      company: { select: { name: true } },
+      assignments: { include: { user: { select: { id: true, name: true } } } },
+    },
+  });
+}
+
+export async function assignEmployeeToProject(projectId: string, userId: string, role?: string | null) {
+  const emp = await prisma.user.findFirst({ where: { id: userId, role: "EMPLOYEE" }, select: { id: true } });
+  if (!emp) throw new ApiError(400, "Not an employee.");
+  return prisma.projectAssignment.upsert({
+    where: { projectId_userId: { projectId, userId } },
+    create: { projectId, userId, role: role || undefined },
+    update: { role: role || undefined },
+  });
+}
+
+export async function unassignEmployee(projectId: string, userId: string) {
+  await prisma.projectAssignment.deleteMany({ where: { projectId, userId } });
+}
+
+// --- Leave review ---
+
+export async function listLeaveRequests() {
+  return prisma.leaveRequest.findMany({
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    take: 100,
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+}
+
+export async function reviewLeave(id: string, reviewerId: string, status: "APPROVED" | "REJECTED", note?: string | null) {
+  return prisma.leaveRequest.update({
+    where: { id },
+    data: { status, reviewedById: reviewerId, reviewedAt: new Date(), reviewNote: note || undefined },
+  });
+}
+
+// --- Salary ---
+
+export async function upsertSalary(input: {
+  userId: string;
+  month: string; // yyyy-MM
+  baseSalary: number;
+  allowances?: number;
+  deductions?: number;
+  status?: "DRAFT" | "PAID";
+  note?: string | null;
+}) {
+  const emp = await prisma.user.findFirst({ where: { id: input.userId, role: "EMPLOYEE" }, select: { id: true } });
+  if (!emp) throw new ApiError(400, "Not an employee.");
+  const allowances = input.allowances ?? 0;
+  const deductions = input.deductions ?? 0;
+  const netPay = Math.round(input.baseSalary + allowances - deductions);
+  const status = input.status ?? "DRAFT";
+  return prisma.salaryRecord.upsert({
+    where: { userId_month: { userId: input.userId, month: input.month } },
+    create: {
+      userId: input.userId,
+      month: input.month,
+      baseSalary: input.baseSalary,
+      allowances,
+      deductions,
+      netPay,
+      status,
+      paidAt: status === "PAID" ? new Date() : undefined,
+      note: input.note || undefined,
+    },
+    update: {
+      baseSalary: input.baseSalary,
+      allowances,
+      deductions,
+      netPay,
+      status,
+      paidAt: status === "PAID" ? new Date() : null,
+      note: input.note || undefined,
+    },
+  });
+}
+
+// --- Performance reviews ---
+
+export async function createReview(input: {
+  userId: string;
+  reviewerId: string;
+  period: string;
+  rating: number;
+  strengths?: string | null;
+  improvements?: string | null;
+  comments?: string | null;
+}) {
+  const emp = await prisma.user.findFirst({ where: { id: input.userId, role: "EMPLOYEE" }, select: { id: true } });
+  if (!emp) throw new ApiError(400, "Not an employee.");
+  return prisma.performanceReview.create({
+    data: {
+      userId: input.userId,
+      reviewerId: input.reviewerId,
+      period: input.period,
+      rating: Math.max(1, Math.min(5, Math.round(input.rating))),
+      strengths: input.strengths || undefined,
+      improvements: input.improvements || undefined,
+      comments: input.comments || undefined,
+    },
+  });
+}
+
+/** Aggregate team analytics for the AI Company People head. */
+export async function getTeamOverview() {
+  const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+  const [headcount, pendingLeave, attendance, reviews, activeProjects] = await Promise.all([
+    prisma.user.count({ where: { role: "EMPLOYEE", isActive: true } }),
+    prisma.leaveRequest.count({ where: { status: "PENDING" } }),
+    prisma.attendance.findMany({ where: { date: { gte: since } }, select: { status: true } }),
+    prisma.performanceReview.findMany({ where: { createdAt: { gte: since } }, select: { rating: true } }),
+    prisma.project.count({ where: { status: "ACTIVE" } }),
+  ]);
+  const present = attendance.filter((a) => a.status === "PRESENT" || a.status === "HALF_DAY").length;
+  const attendanceRate = attendance.length ? Math.round((present / attendance.length) * 100) : null;
+  const avgRating = reviews.length ? Number((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)) : null;
+  return { headcount, pendingLeave, attendanceRate, avgRating, reviewCount: reviews.length, activeProjects };
 }

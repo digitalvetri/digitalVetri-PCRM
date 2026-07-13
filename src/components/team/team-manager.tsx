@@ -3,11 +3,17 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, UserPlus } from "lucide-react";
+import { Check, Loader2, Plus, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { formatINR, cn } from "@/lib/utils";
+
+// ---------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------
 
 interface EmployeeRow {
   id: string;
@@ -19,62 +25,113 @@ interface EmployeeRow {
   department: string | null;
   joinDate: string | null;
 }
+interface ProjectRow {
+  id: string;
+  name: string;
+  company: string | null;
+  status: string;
+  value: number | null;
+  dueDate: string | null;
+  assignments: { userId: string; name: string; role: string | null }[];
+}
+interface LeaveRow {
+  id: string;
+  employee: string;
+  email: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  reason: string | null;
+  status: string;
+  reviewNote: string | null;
+}
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
-export function TeamManager({ employees }: { employees: EmployeeRow[] }) {
+async function post(url: string, body: unknown, method = "POST") {
+  const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error ?? "Request failed");
+  return json;
+}
+
+const STATUS_TONE: Record<string, string> = {
+  APPROVED: "border-emerald-500/40 text-emerald-600",
+  PENDING: "border-amber-500/40 text-amber-600",
+  REJECTED: "border-red-500/40 text-red-600",
+  ACTIVE: "border-primary/40 text-primary",
+  COMPLETED: "border-emerald-500/40 text-emerald-600",
+  ON_HOLD: "border-amber-500/40 text-amber-600",
+};
+
+export function TeamManager({ employees, projects, leaves }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[] }) {
+  const pendingLeave = leaves.filter((l) => l.status === "PENDING").length;
+  return (
+    <Tabs defaultValue="employees" className="animate-fade-in">
+      <TabsList className="h-auto flex-wrap justify-start">
+        <TabsTrigger value="employees">Employees ({employees.length})</TabsTrigger>
+        <TabsTrigger value="projects">Projects ({projects.length})</TabsTrigger>
+        <TabsTrigger value="leave">Leave{pendingLeave ? ` (${pendingLeave})` : ""}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="employees" className="mt-4">
+        <EmployeesTab employees={employees} projects={projects} />
+      </TabsContent>
+      <TabsContent value="projects" className="mt-4">
+        <ProjectsTab projects={projects} employees={employees} />
+      </TabsContent>
+      <TabsContent value="leave" className="mt-4">
+        <LeaveTab leaves={leaves} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+// ---------------------------------------------------------------
+// Employees
+// ---------------------------------------------------------------
+
+function EmployeesTab({ employees, projects }: { employees: EmployeeRow[]; projects: ProjectRow[] }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [manageId, setManageId] = React.useState<string | null>(null);
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setOpen((o) => !o)}>
-          <UserPlus className="h-4 w-4" /> {open ? "Close" : "Add employee"}
+        <Button onClick={() => setAdding((o) => !o)}>
+          <UserPlus className="h-4 w-4" /> {adding ? "Close" : "Add employee"}
         </Button>
       </div>
-
-      {open && <AddEmployeeForm onDone={() => { setOpen(false); router.refresh(); }} />}
+      {adding && <AddEmployeeForm onDone={() => { setAdding(false); router.refresh(); }} />}
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Employees ({employees.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {employees.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No employees yet. Add your first one above.</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">No employees yet. Add your first one above.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                    <th className="py-2">Code</th>
-                    <th className="py-2">Name</th>
-                    <th className="py-2">Email</th>
-                    <th className="py-2">Designation</th>
-                    <th className="py-2">Department</th>
-                    <th className="py-2">Joined</th>
-                    <th className="py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {employees.map((e) => (
-                    <tr key={e.id} className="border-b last:border-0">
-                      <td className="py-2 font-mono text-xs">{e.code}</td>
-                      <td className="py-2 font-medium">{e.name}</td>
-                      <td className="py-2 text-muted-foreground">{e.email}</td>
-                      <td className="py-2">{e.designation ?? "—"}</td>
-                      <td className="py-2">{e.department ?? "—"}</td>
-                      <td className="py-2">{fmtDate(e.joinDate)}</td>
-                      <td className="py-2">
-                        <Badge variant="outline" className={e.active ? "border-emerald-500/40 text-emerald-600" : "text-muted-foreground"}>
-                          {e.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="divide-y">
+              {employees.map((e) => (
+                <div key={e.id}>
+                  <button
+                    onClick={() => setManageId((id) => (id === e.id ? null : e.id))}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{e.name}</span>
+                        <span className="font-mono text-xs text-muted-foreground">{e.code}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {e.email} · {e.designation ?? "—"}{e.department ? ` · ${e.department}` : ""}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className={e.active ? "border-emerald-500/40 text-emerald-600" : "text-muted-foreground"}>
+                      {e.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </button>
+                  {manageId === e.id && <ManageEmployee employee={e} projects={projects} onDone={() => router.refresh()} />}
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
@@ -83,78 +140,263 @@ export function TeamManager({ employees }: { employees: EmployeeRow[] }) {
   );
 }
 
-function AddEmployeeForm({ onDone }: { onDone: () => void }) {
-  const [busy, setBusy] = React.useState(false);
-  const [f, setF] = React.useState({
-    name: "",
-    email: "",
-    password: "",
-    employeeCode: "",
-    designation: "",
-    department: "",
-    phone: "",
-    joinDate: "",
-    baseSalary: "",
-  });
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+function ManageEmployee({ employee, projects, onDone }: { employee: EmployeeRow; projects: ProjectRow[]; onDone: () => void }) {
+  return (
+    <div className="grid gap-4 border-t bg-muted/20 p-4 lg:grid-cols-3">
+      <AssignPanel employee={employee} projects={projects} onDone={onDone} />
+      <SalaryPanel employee={employee} onDone={onDone} />
+      <ReviewPanel employee={employee} onDone={onDone} />
+    </div>
+  );
+}
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!f.name || !f.email || !f.password || !f.employeeCode) {
-      toast.error("Name, email, password and employee code are required");
-      return;
-    }
+function AssignPanel({ employee, projects, onDone }: { employee: EmployeeRow; projects: ProjectRow[]; onDone: () => void }) {
+  const [projectId, setProjectId] = React.useState("");
+  const [role, setRole] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function assign() {
+    if (!projectId) return toast.error("Pick a project");
     setBusy(true);
     try {
-      const res = await fetch("/api/team/employees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: f.name,
-          email: f.email,
-          password: f.password,
-          employeeCode: f.employeeCode,
-          designation: f.designation || undefined,
-          department: f.department || undefined,
-          phone: f.phone || undefined,
-          joinDate: f.joinDate || undefined,
-          baseSalary: f.baseSalary ? Number(f.baseSalary) : undefined,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to create employee");
-      toast.success(`${f.name} can now sign in with their email and this password.`);
+      await post("/api/team/projects/assign", { projectId, userId: employee.id, role: role || undefined });
+      toast.success("Assigned to project");
+      setRole("");
       onDone();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
       setBusy(false);
     }
   }
+  return (
+    <MiniCard title="Assign to project">
+      <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+        <option value="">Select project…</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+      <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Role (optional)" className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+      <Button size="sm" onClick={assign} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Assign
+      </Button>
+    </MiniCard>
+  );
+}
 
+function SalaryPanel({ employee, onDone }: { employee: EmployeeRow; onDone: () => void }) {
+  const [month, setMonth] = React.useState("");
+  const [base, setBase] = React.useState("");
+  const [allow, setAllow] = React.useState("");
+  const [ded, setDed] = React.useState("");
+  const [status, setStatus] = React.useState("DRAFT");
+  const [busy, setBusy] = React.useState(false);
+  async function save() {
+    if (!month || !base) return toast.error("Month and base salary required");
+    setBusy(true);
+    try {
+      const r = await post("/api/team/salary", {
+        userId: employee.id,
+        month,
+        baseSalary: Number(base),
+        allowances: allow ? Number(allow) : undefined,
+        deductions: ded ? Number(ded) : undefined,
+        status,
+      });
+      toast.success(`Salary saved · net ${formatINR(r.netPay)}`);
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <MiniCard title="Salary record">
+      <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+      <div className="grid grid-cols-3 gap-1.5">
+        <input value={base} onChange={(e) => setBase(e.target.value)} type="number" placeholder="Base" className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+        <input value={allow} onChange={(e) => setAllow(e.target.value)} type="number" placeholder="Allow." className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+        <input value={ded} onChange={(e) => setDed(e.target.value)} type="number" placeholder="Deduct." className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+      </div>
+      <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+        <option value="DRAFT">Draft</option>
+        <option value="PAID">Paid</option>
+      </select>
+      <Button size="sm" onClick={save} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save salary
+      </Button>
+    </MiniCard>
+  );
+}
+
+function ReviewPanel({ employee, onDone }: { employee: EmployeeRow; onDone: () => void }) {
+  const [period, setPeriod] = React.useState("");
+  const [rating, setRating] = React.useState("4");
+  const [strengths, setStrengths] = React.useState("");
+  const [improvements, setImprovements] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function save() {
+    if (!period) return toast.error("Period required (e.g. 2026-Q2)");
+    setBusy(true);
+    try {
+      await post("/api/team/reviews", { userId: employee.id, period, rating: Number(rating), strengths: strengths || undefined, improvements: improvements || undefined });
+      toast.success("Review added");
+      setStrengths("");
+      setImprovements("");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <MiniCard title="Performance review">
+      <div className="flex gap-1.5">
+        <input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="2026-Q2" className="h-9 flex-1 rounded-md border bg-background px-2 text-sm" />
+        <select value={rating} onChange={(e) => setRating(e.target.value)} className="h-9 w-16 rounded-md border bg-background px-2 text-sm">
+          {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}★</option>)}
+        </select>
+      </div>
+      <input value={strengths} onChange={(e) => setStrengths(e.target.value)} placeholder="Strengths" className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+      <input value={improvements} onChange={(e) => setImprovements(e.target.value)} placeholder="To improve" className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+      <Button size="sm" onClick={save} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Add review
+      </Button>
+    </MiniCard>
+  );
+}
+
+// ---------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------
+
+function ProjectsTab({ projects, employees }: { projects: ProjectRow[]; employees: EmployeeRow[] }) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={() => setOpen((o) => !o)}>
+          <Plus className="h-4 w-4" /> {open ? "Close" : "New project"}
+        </Button>
+      </div>
+      {open && <CreateProjectForm onDone={() => { setOpen(false); router.refresh(); }} />}
+      {projects.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">No projects yet.</p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {projects.map((p) => (
+            <Card key={p.id}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-base">{p.name}</CardTitle>
+                  <Badge variant="outline" className={cn("text-[10px]", STATUS_TONE[p.status])}>{p.status}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {p.company ?? "Internal"}{p.value != null ? ` · ${formatINR(p.value)}` : ""}{p.dueDate ? ` · due ${fmtDate(p.dueDate)}` : ""}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {p.assignments.length === 0 ? (
+                    <span className="text-xs text-muted-foreground">No one assigned</span>
+                  ) : (
+                    p.assignments.map((a) => (
+                      <ProjectMember key={a.userId} projectId={p.id} member={a} onDone={() => router.refresh()} />
+                    ))
+                  )}
+                </div>
+                <AssignToProject projectId={p.id} employees={employees} onDone={() => router.refresh()} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectMember({ projectId, member, onDone }: { projectId: string; member: { userId: string; name: string; role: string | null }; onDone: () => void }) {
+  async function remove() {
+    try {
+      await post("/api/team/projects/assign", { projectId, userId: member.userId, remove: true });
+      onDone();
+    } catch {
+      toast.error("Failed to remove");
+    }
+  }
+  return (
+    <Badge variant="secondary" className="gap-1">
+      {member.name}{member.role ? ` · ${member.role}` : ""}
+      <button onClick={remove} aria-label="Remove" className="ml-0.5 rounded hover:text-red-600"><X className="h-3 w-3" /></button>
+    </Badge>
+  );
+}
+
+function AssignToProject({ projectId, employees, onDone }: { projectId: string; employees: EmployeeRow[]; onDone: () => void }) {
+  const [userId, setUserId] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function assign() {
+    if (!userId) return;
+    setBusy(true);
+    try {
+      await post("/api/team/projects/assign", { projectId, userId });
+      setUserId("");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex gap-1.5">
+      <select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-8 flex-1 rounded-md border bg-background px-2 text-xs">
+        <option value="">Assign employee…</option>
+        {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+      </select>
+      <Button size="sm" className="h-8" onClick={assign} disabled={busy || !userId}>
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+      </Button>
+    </div>
+  );
+}
+
+function CreateProjectForm({ onDone }: { onDone: () => void }) {
+  const statusId = React.useId();
+  const [f, setF] = React.useState({ name: "", value: "", status: "ACTIVE", dueDate: "" });
+  const [busy, setBusy] = React.useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!f.name) return toast.error("Project name required");
+    setBusy(true);
+    try {
+      await post("/api/team/projects", { name: f.name, value: f.value ? Number(f.value) : undefined, status: f.status, dueDate: f.dueDate || undefined });
+      toast.success("Project created");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">New employee</CardTitle>
-        <p className="text-xs text-muted-foreground">
-          You set the starting email &amp; password — the employee can change their password after signing in.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Full name *" value={f.name} onChange={set("name")} />
-          <Field label="Email (login) *" type="email" value={f.email} onChange={set("email")} />
-          <Field label="Temporary password *" type="text" value={f.password} onChange={set("password")} placeholder="min 8 characters" />
-          <Field label="Employee code *" value={f.employeeCode} onChange={set("employeeCode")} placeholder="e.g. DV-E-001" />
-          <Field label="Designation" value={f.designation} onChange={set("designation")} />
-          <Field label="Department" value={f.department} onChange={set("department")} />
-          <Field label="Phone" value={f.phone} onChange={set("phone")} />
-          <Field label="Join date" type="date" value={f.joinDate} onChange={set("joinDate")} />
-          <Field label="Base salary (₹/month)" type="number" value={f.baseSalary} onChange={set("baseSalary")} />
-          <div className="sm:col-span-2 lg:col-span-3">
-            <Button type="submit" disabled={busy}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Create employee
-            </Button>
+      <CardContent className="p-4">
+        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Project name *" value={f.name} onChange={(v) => setF((p) => ({ ...p, name: v }))} />
+          <Field label="Value (₹, hidden from staff)" type="number" value={f.value} onChange={(v) => setF((p) => ({ ...p, value: v }))} />
+          <div className="space-y-1.5">
+            <Label htmlFor={statusId}>Status</Label>
+            <select id={statusId} value={f.status} onChange={(e) => setF((p) => ({ ...p, status: e.target.value }))} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+              {["PLANNED", "ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <Field label="Due date" type="date" value={f.dueDate} onChange={(v) => setF((p) => ({ ...p, dueDate: v }))} />
+          <div className="sm:col-span-2 lg:col-span-4">
+            <Button type="submit" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Create project</Button>
           </div>
         </form>
       </CardContent>
@@ -162,31 +404,127 @@ function AddEmployeeForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  type?: string;
-  placeholder?: string;
-}) {
+// ---------------------------------------------------------------
+// Leave
+// ---------------------------------------------------------------
+
+function LeaveTab({ leaves }: { leaves: LeaveRow[] }) {
+  const router = useRouter();
+  if (leaves.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">No leave requests.</p>;
+  return (
+    <div className="space-y-2">
+      {leaves.map((l) => (
+        <LeaveItem key={l.id} leave={l} onDone={() => router.refresh()} />
+      ))}
+    </div>
+  );
+}
+
+function LeaveItem({ leave, onDone }: { leave: LeaveRow; onDone: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  async function review(status: "APPROVED" | "REJECTED") {
+    setBusy(true);
+    try {
+      await post(`/api/team/leave/${leave.id}`, { status }, "PATCH");
+      toast.success(status === "APPROVED" ? "Leave approved" : "Leave rejected");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card>
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{leave.employee}</span>
+            <Badge variant="outline" className={cn("text-[10px]", STATUS_TONE[leave.status])}>{leave.status}</Badge>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {leave.type} · {fmtDate(leave.startDate)} → {fmtDate(leave.endDate)}{leave.reason ? ` · ${leave.reason}` : ""}
+          </div>
+        </div>
+        {leave.status === "PENDING" && (
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => review("APPROVED")} disabled={busy}><Check className="h-4 w-4" /> Approve</Button>
+            <Button size="sm" variant="outline" onClick={() => review("REJECTED")} disabled={busy}><X className="h-4 w-4" /> Reject</Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------
+// Shared: add-employee form + small helpers
+// ---------------------------------------------------------------
+
+function AddEmployeeForm({ onDone }: { onDone: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  const [f, setF] = React.useState({ name: "", email: "", password: "", employeeCode: "", designation: "", department: "", phone: "", joinDate: "", baseSalary: "" });
+  const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!f.name || !f.email || !f.password || !f.employeeCode) return toast.error("Name, email, password and code are required");
+    setBusy(true);
+    try {
+      await post("/api/team/employees", {
+        name: f.name, email: f.email, password: f.password, employeeCode: f.employeeCode,
+        designation: f.designation || undefined, department: f.department || undefined,
+        phone: f.phone || undefined, joinDate: f.joinDate || undefined, baseSalary: f.baseSalary ? Number(f.baseSalary) : undefined,
+      });
+      toast.success(`${f.name} can now sign in with their email and password.`);
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">New employee</CardTitle>
+        <p className="text-xs text-muted-foreground">You set the starting email &amp; password — the employee can change their password after signing in.</p>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Full name *" value={f.name} onChange={set("name")} />
+          <Field label="Email (login) *" type="email" value={f.email} onChange={set("email")} />
+          <Field label="Temporary password *" value={f.password} onChange={set("password")} placeholder="min 8 characters" />
+          <Field label="Employee code *" value={f.employeeCode} onChange={set("employeeCode")} placeholder="DV-E-001" />
+          <Field label="Designation" value={f.designation} onChange={set("designation")} />
+          <Field label="Department" value={f.department} onChange={set("department")} />
+          <Field label="Phone" value={f.phone} onChange={set("phone")} />
+          <Field label="Join date" type="date" value={f.joinDate} onChange={set("joinDate")} />
+          <Field label="Base salary (₹/month)" type="number" value={f.baseSalary} onChange={set("baseSalary")} />
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Button type="submit" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Create employee</Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MiniCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2 rounded-lg border bg-background p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, type = "text", placeholder }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }) {
   const id = React.useId();
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        className="h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-primary"
-      />
+      <input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="h-9 w-full rounded-md border bg-background px-2.5 text-sm outline-none focus:border-primary" />
     </div>
   );
 }

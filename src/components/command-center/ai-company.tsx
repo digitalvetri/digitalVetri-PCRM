@@ -73,7 +73,7 @@ const DEPTS: DeptMeta[] = [
   { key: "customer-success", title: "Head of Customer Success", emoji: "🤝", group: "Operations", grounded: true, tagline: "Retention, renewals & upsell", owns: ["Active clients", "Renewals", "Upsell"] },
   { key: "finance", title: "Head of Finance", emoji: "💰", group: "Corporate", grounded: true, tagline: "Revenue, profit & recurring", owns: ["Revenue", "MRR/ARR", "Outstanding", "Renewals"] },
   { key: "legal", title: "Head of Legal", emoji: "⚖️", group: "Corporate", grounded: false, tagline: "Contracts, NDAs & compliance", owns: ["Contracts", "NDAs", "Compliance"] },
-  { key: "people", title: "Head of People", emoji: "👥", group: "Corporate", grounded: false, tagline: "Hiring, roles & team", owns: ["Hiring", "Onboarding", "Culture"] },
+  { key: "people", title: "Head of People", emoji: "👥", group: "Corporate", grounded: true, tagline: "Team, performance & attendance", owns: ["Team", "Performance", "Attendance", "Leave"] },
 ];
 const GROUPS: DeptGroup[] = ["Revenue", "Delivery", "Operations", "Corporate"];
 
