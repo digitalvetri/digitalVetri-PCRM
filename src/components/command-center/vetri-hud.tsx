@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Activity, AlertTriangle, BrainCircuit, Cpu, Database, Mic, Play, RadioTower, Rocket, Sparkles, Target } from "lucide-react";
+import { Activity, AlertTriangle, BrainCircuit, Cpu, Database, Maximize2, Minimize2, Mic, Play, RadioTower, Rocket, Sparkles, Target } from "lucide-react";
 import { formatINR, cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------
@@ -71,10 +71,22 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
 
 export function VetriHud({ vitals, providers, counts }: { vitals: VetriVitals; providers: VetriProvider[]; counts: VetriCounts }) {
   const router = useRouter();
+  const rootRef = React.useRef<HTMLDivElement>(null);
   const [clock, setClock] = React.useState("");
+  const [fullscreen, setFullscreen] = React.useState(false);
   const [briefing, setBriefing] = React.useState<CeoBriefing | null>(null);
   const [reports, setReports] = React.useState<Record<string, StoredDeptReport>>({});
   const [busy, setBusy] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else rootRef.current?.requestFullscreen().catch(() => {});
+  }
 
   React.useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
@@ -136,7 +148,13 @@ export function VetriHud({ vitals, providers, counts }: { vitals: VetriVitals; p
   }
 
   return (
-    <div className="animate-fade-in overflow-hidden rounded-2xl bg-gradient-to-b from-slate-950 via-[#0a1120] to-slate-950 p-4 text-slate-200 ring-1 ring-cyan-500/20 sm:p-6">
+    <div
+      ref={rootRef}
+      className={cn(
+        "animate-fade-in flex flex-col overflow-y-auto rounded-2xl bg-gradient-to-b from-slate-950 via-[#0a1120] to-slate-950 p-4 text-slate-200 ring-1 ring-cyan-500/20 sm:p-6",
+        fullscreen ? "min-h-screen rounded-none" : "min-h-[82vh]"
+      )}
+    >
       {/* Top status strip */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-cyan-500/10 pb-3 text-xs">
         <div className="flex items-center gap-2">
@@ -148,8 +166,13 @@ export function VetriHud({ vitals, providers, counts }: { vitals: VetriVitals; p
           <span className="font-bold text-emerald-400">OPTIMAL</span>
         </div>
         <div className="font-mono text-base font-bold tabular-nums tracking-[0.3em] text-cyan-300">{clock}</div>
-        <div className="flex items-center gap-1.5 text-slate-400">
-          <RadioTower className="h-3.5 w-3.5 text-cyan-400" /> {online} models online
+        <div className="flex items-center gap-3 text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <RadioTower className="h-3.5 w-3.5 text-cyan-400" /> {online} online
+          </span>
+          <button onClick={toggleFullscreen} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label="Toggle full screen" className="rounded-md p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-cyan-300">
+            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
         </div>
       </div>
 

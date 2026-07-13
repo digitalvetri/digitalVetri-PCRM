@@ -129,11 +129,8 @@ export function AiAssistant() {
   // Voice: output (CEO talks back) is a user toggle persisted in localStorage;
   // input (dictation) needs the Web Speech recognition API.
   const [voiceOn, setVoiceOn] = React.useState(false);
-  const [listening, setListening] = React.useState(false);
   const [voiceInSupported, setVoiceInSupported] = React.useState(false);
   const [voiceOutSupported, setVoiceOutSupported] = React.useState(false);
-  const recognitionRef = React.useRef<SpeechRecognitionLike | null>(null);
-  const baseTextRef = React.useRef("");
 
   // Wake word — "Vetri" always-listening (opt-in).
   const [wakeOn, setWakeOn] = React.useState(false);
@@ -169,7 +166,9 @@ export function AiAssistant() {
       setClapOn(localStorage.getItem(CLAP_KEY) === "1");
       setWakeOn(localStorage.getItem(WAKE_KEY) === "1");
       const storedLang = localStorage.getItem(LANG_KEY);
-      const initialLang: Lang = storedLang === "en" ? "en" : "ta"; // default Tamil
+      // Default English so English commands ("open calendar") are recognised;
+      // Tamil is one tap away (the த toggle). STT language must match what you speak.
+      const initialLang: Lang = storedLang === "ta" ? "ta" : "en";
       setLang(initialLang);
       langRef.current = initialLang;
     } catch {
@@ -245,28 +244,25 @@ export function AiAssistant() {
       /* ignore */
     }
   }, [finalizeSoon]);
+  // Start listening for a question (from tap, wake word, or clap). No spoken
+  // greeting — the "Listening…" indicator is the feedback, and it auto-sends
+  // what you say. Toggling while listening stops it.
   const arm = React.useCallback(
     (initial: string) => {
-      if (armedRef.current) return; // already listening — don't re-greet
+      if (armedRef.current) return;
+      cancelSpeech();
       armedRef.current = true;
       setArmed(true);
       setOpen(true);
       questionBufRef.current = initial;
-      ignoreUntilRef.current = Date.now() + 2600; // don't hear our own greeting
-      {
-        const ta = langRef.current === "ta";
-        speak(ta ? "ஆம் சார், நான் என்ன செய்யட்டும்?" : "Yes boss, what should I do now?", {
-          lang: ta ? "ta-IN" : "en-IN",
-        });
-      }
-      finalizeSoon();
+      ignoreUntilRef.current = 0;
       // The always-on wake recognizer already feeds the buffer; only spin up a
-      // capture recognizer when it isn't running (clap / button activation).
+      // capture recognizer when it isn't running (tap / clap activation).
       if (!wakeOnRef.current) startCapture();
       if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
-      armExpiryRef.current = setTimeout(disarm, 12000);
+      armExpiryRef.current = setTimeout(disarm, 15000);
     },
-    [disarm, finalizeSoon, startCapture]
+    [disarm, startCapture]
   );
 
   // "Vetri" wake word — an always-listening recognizer that opens the assistant
@@ -430,13 +426,16 @@ export function AiAssistant() {
     };
   }, [clapOn, arm]);
 
-  // The Vetri HUD's "Talk to Vetri" button dispatches this — just opens the
-  // panel (no auto-greeting; the user taps the mic or types).
+  // The Vetri HUD's "Talk to Vetri" button dispatches this — open + start
+  // listening immediately (then auto-send what you say).
   React.useEffect(() => {
-    const onTalk = () => setOpen(true);
+    const onTalk = () => {
+      setOpen(true);
+      arm("");
+    };
     window.addEventListener("vetri:talk", onTalk);
     return () => window.removeEventListener("vetri:talk", onTalk);
-  }, []);
+  }, [arm]);
 
   const hasUserMessage = messages.some((m) => m.role === "user");
 
@@ -473,7 +472,7 @@ export function AiAssistant() {
   React.useEffect(() => {
     if (!open) {
       cancelSpeech();
-      recognitionRef.current?.stop();
+      disarm();
       return;
     }
     panelInputRef.current?.focus();
@@ -482,7 +481,7 @@ export function AiAssistant() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, disarm]);
 
   if (!canUse) return null;
 
@@ -547,45 +546,11 @@ export function AiAssistant() {
     });
   }
 
-  function toggleListening() {
-    const Ctor = getSpeechCtor();
-    if (!Ctor) return;
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const rec = new Ctor();
-    rec.lang = langRef.current === "ta" ? "ta-IN" : "en-IN";
-    rec.continuous = false;
-    rec.interimResults = true;
-    baseTextRef.current = input ? input.trimEnd() + " " : "";
-    rec.onresult = (e) => {
-      let finalText = "";
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const res = e.results[i];
-        if (res.isFinal) finalText += res[0].transcript;
-        else interim += res[0].transcript;
-      }
-      if (finalText) baseTextRef.current += finalText;
-      setInput(baseTextRef.current + interim);
-    };
-    rec.onerror = (ev) => {
-      setListening(false);
-      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
-        toast.error("Microphone access was blocked. Allow it in your browser to talk to your CEO.");
-      } else if (ev.error !== "aborted" && ev.error !== "no-speech") {
-        toast.error(`Voice input error: ${ev.error}`);
-      }
-    };
-    rec.onend = () => setListening(false);
-    recognitionRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      /* start() throws if already started — ignore */
-    }
+  // Tap the mic: start listening (auto-sends what you say) or stop if already on.
+  function micTap() {
+    if (!voiceInSupported) return;
+    if (armedRef.current) disarm();
+    else arm("");
   }
 
   const ttsLang = lang === "ta" ? "ta-IN" : "en-IN";
@@ -597,7 +562,7 @@ export function AiAssistant() {
 
   async function send(question: string, forceSpeak = false) {
     if (!question.trim() || loading) return;
-    recognitionRef.current?.stop();
+    if (!forceSpeak) disarm(); // typing stops any active listening
     cancelSpeech();
     setInput("");
     setMessages((m) => [...m, { role: "user", content: question }]);
@@ -870,13 +835,13 @@ export function AiAssistant() {
                 <Button
                   type="button"
                   size="icon"
-                  variant={listening ? "default" : "outline"}
-                  onClick={toggleListening}
+                  variant={armed ? "default" : "outline"}
+                  onClick={micTap}
                   disabled={wakeOn}
-                  title={wakeOn ? "Wake word is on — just say “Vetri”" : undefined}
-                  aria-label={listening ? "Stop listening" : "Talk to your CEO"}
-                  aria-pressed={listening}
-                  className={cn(listening && "animate-pulse")}
+                  title={wakeOn ? "Wake word is on — just say “Vetri”" : armed ? "Listening… tap to stop" : "Tap to talk"}
+                  aria-label={armed ? "Stop listening" : "Talk to Vetri"}
+                  aria-pressed={armed}
+                  className={cn(armed && "animate-pulse")}
                 >
                   <Mic className="h-4 w-4" />
                 </Button>
@@ -885,7 +850,7 @@ export function AiAssistant() {
                 ref={panelInputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={listening ? "Listening…" : "Ask your CEO anything…"}
+                placeholder={armed ? "Listening… speak now" : "Ask your CEO anything…"}
                 aria-label="Ask your AI CEO a question"
                 className="h-9 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus:border-primary"
               />
