@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/api-error";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { synthesizeSpeech } from "@/lib/tts";
 
-const schema = z.object({ text: z.string().min(1).max(1500) });
+const schema = z.object({ text: z.string().min(1).max(1500), lang: z.enum(["en", "ta"]).optional() });
 
 export const maxDuration = 60;
 
@@ -13,10 +13,10 @@ export async function POST(req: Request) {
   try {
     const user = await requireUser("content.generate");
     enforceRateLimit(`tts:${user.id}`, 60, 60_000);
-    const { text } = schema.parse(await req.json());
-    const audio = await synthesizeSpeech(text);
+    const { text, lang } = schema.parse(await req.json());
+    const { audio, contentType } = await synthesizeSpeech(text, lang ?? "en");
     return new Response(audio, {
-      headers: { "Content-Type": "audio/wav", "Cache-Control": "no-store" },
+      headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
     });
   } catch (e) {
     const status = e instanceof ApiError ? e.status : 500;

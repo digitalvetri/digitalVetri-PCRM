@@ -106,14 +106,14 @@ export function isSpeaking(): boolean {
  * element. Returns true if it played, false if the server TTS was unavailable
  * (so the caller can fall back to the browser engine). English only.
  */
-export async function speakViaServer(text: string): Promise<boolean> {
+export async function speakViaServer(text: string, lang: "en" | "ta" = "en"): Promise<boolean> {
   const clean = cleanForSpeech(text);
   if (!clean) return true;
   try {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: clean }),
+      body: JSON.stringify({ text: clean, lang }),
     });
     if (!res.ok) return false;
     const blob = await res.blob();
@@ -138,11 +138,10 @@ export async function speakViaServer(text: string): Promise<boolean> {
  * up, fall back to the browser engine. Use this for anything Vetri says.
  */
 export async function speakSmart(text: string, lang: "en" | "ta" = "en"): Promise<void> {
-  // Tamil isn't supported by the server voice — go straight to the browser engine.
-  if (lang === "en") {
-    const played = await speakViaServer(text);
-    if (played) return;
-  }
+  // Server voice supports both English and Tamil; fall back to the browser engine
+  // only if the server voice is unavailable.
+  const played = await speakViaServer(text, lang);
+  if (played) return;
   speak(text, { lang: lang === "ta" ? "ta-IN" : "en-IN" });
 }
 
