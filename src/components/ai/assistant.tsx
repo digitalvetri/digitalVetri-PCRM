@@ -471,13 +471,18 @@ export function AiAssistant() {
   // Move focus into the panel on open; close on Escape; stop any speech on close.
   React.useEffect(() => {
     if (!open) {
-      cancelSpeech();
+      // NOTE: do NOT cancelSpeech() here — navigating closes the panel and would
+      // cut off Vetri's spoken reply. Speech is stopped only on an explicit close
+      // (the X button / Escape) below.
       disarm();
       return;
     }
     panelInputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        cancelSpeech();
+        setOpen(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -742,7 +747,10 @@ export function AiAssistant() {
                 {lang === "ta" ? "த" : "EN"}
               </button>
               <button
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  cancelSpeech();
+                  setOpen(false);
+                }}
                 title="Close"
                 aria-label="Close Vetri"
                 className="rounded-md p-1.5 text-blue-100 transition-colors hover:bg-white/10 hover:text-white"

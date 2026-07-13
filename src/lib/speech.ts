@@ -82,6 +82,9 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
     voiceCache.find((v) => v.lang?.toLowerCase() === target) ??
     voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short));
   if (match) u.voice = match;
+  // Chrome can leave synthesis in a paused state after a cancel(); resume() +
+  // speak() unsticks it so the utterance actually plays.
+  window.speechSynthesis.resume();
   window.speechSynthesis.speak(u);
 }
 
