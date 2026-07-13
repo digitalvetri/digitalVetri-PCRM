@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils";
 import {
   getSpeechCtor,
   isSpeechSynthesisSupported,
-  hasVoiceFor,
-  speak,
+  speakSmart,
+  isSpeaking,
   cancelSpeech,
   primeSpeech,
   type SpeechRecognitionLike,
@@ -136,8 +136,8 @@ export function AiAssistant() {
   // Wake word — "Vetri" always-listening (opt-in).
   const [wakeOn, setWakeOn] = React.useState(false);
   const [clapOn, setClapOn] = React.useState(false);
-  const [lang, setLang] = React.useState<Lang>("ta");
-  const langRef = React.useRef<Lang>("ta");
+  const [lang, setLang] = React.useState<Lang>("en");
+  const langRef = React.useRef<Lang>("en");
   const [armed, setArmed] = React.useState(false); // heard "Vetri" / clap, capturing the question
   const wakeRecRef = React.useRef<SpeechRecognitionLike | null>(null);
   const captureRecRef = React.useRef<SpeechRecognitionLike | null>(null);
@@ -160,12 +160,12 @@ export function AiAssistant() {
     setVoiceInSupported(getSpeechCtor() !== null);
     setVoiceOutSupported(isSpeechSynthesisSupported());
     try {
-      // Voice OUTPUT defaults on (Vetri speaks its answers). Hands-free LISTENING
-      // (clap + wake) defaults OFF and is opt-in — browser clap detection is raw
-      // amplitude and false-triggers on noise, which made Vetri "talk to itself".
+      // Voice output + hands-free listening (wake word "Vetri" + clap) all default
+      // ON so calling "Vetri" or clapping just works. Clap is robust now (strict
+      // threshold, cooldown, and it's muted while Vetri speaks via isSpeaking()).
       setVoiceOn(localStorage.getItem(VOICE_KEY) !== "0");
-      setClapOn(localStorage.getItem(CLAP_KEY) === "1");
-      setWakeOn(localStorage.getItem(WAKE_KEY) === "1");
+      setClapOn(localStorage.getItem(CLAP_KEY) !== "0");
+      setWakeOn(localStorage.getItem(WAKE_KEY) !== "0");
       const storedLang = localStorage.getItem(LANG_KEY);
       // Default English so English commands ("open calendar") are recognised;
       // Tamil is one tap away (the த toggle). STT language must match what you speak.
@@ -222,7 +222,7 @@ export function AiAssistant() {
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
-      if (typeof window !== "undefined" && window.speechSynthesis?.speaking) return;
+      if (isSpeaking()) return;
       if (Date.now() < ignoreUntilRef.current) return;
       let finalText = "";
       let interim = "";
@@ -289,7 +289,7 @@ export function AiAssistant() {
         // Never react to our own speech — otherwise the CEO saying "DigitalVetri"
         // would re-trigger the wake word and loop. `speaking` is ground truth;
         // the ignore-window is a fallback for the moment right after speech ends.
-        if (typeof window !== "undefined" && window.speechSynthesis?.speaking) return;
+        if (isSpeaking()) return;
         if (Date.now() < ignoreUntilRef.current) return;
         let finalText = "";
         let interim = "";
@@ -389,7 +389,7 @@ export function AiAssistant() {
           const now = performance.now();
           // Never sample while Vetri is speaking (else it hears its own voice and
           // re-triggers), nor during the cooldown right after an activation.
-          if ((typeof window !== "undefined" && window.speechSynthesis?.speaking) || now < clapCooldownUntil || armedRef.current) {
+          if ((isSpeaking()) || now < clapCooldownUntil || armedRef.current) {
             firstClapAt = 0;
             raf = requestAnimationFrame(tick);
             return;
@@ -545,14 +545,7 @@ export function AiAssistant() {
         /* ignore */
       }
       langRef.current = next;
-      if (next === "ta") {
-        toast.success("வெற்றி இனி தமிழில் பேசும். (Speak Tamil to it.)");
-        if (!hasVoiceFor("ta")) {
-          toast.warning("No Tamil voice on this device — replies show in Tamil text but may not sound right. Try Android Chrome.");
-        }
-      } else {
-        toast.success("Vetri will speak English.");
-      }
+      toast.success(next === "ta" ? "வெற்றி இனி தமிழில் பேசும். (Speak Tamil to it.)" : "Vetri will speak English.");
       return next;
     });
   }
@@ -565,11 +558,11 @@ export function AiAssistant() {
     else arm("");
   }
 
-  const ttsLang = lang === "ta" ? "ta-IN" : "en-IN";
   function sayOut(text: string, force = false) {
     if (!(voiceOn || force)) return;
-    ignoreUntilRef.current = Date.now() + text.split(/\s+/).length * 360 + 1500;
-    speak(text, { lang: ttsLang });
+    // Deafen the wake/clap listeners while Vetri talks (isSpeaking() also guards).
+    ignoreUntilRef.current = Date.now() + text.split(/\s+/).length * 420 + 2500;
+    void speakSmart(text, lang);
   }
 
   async function send(question: string, forceSpeak = false) {

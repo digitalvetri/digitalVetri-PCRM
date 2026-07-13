@@ -91,8 +91,71 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
   window.speechSynthesis.speak(u);
 }
 
+// --- Server TTS (plays real audio, bypassing a broken browser speech engine) ---
+
+let currentAudio: HTMLAudioElement | null = null;
+
+/** True if Vetri is currently speaking via EITHER the audio element or the browser engine. */
+export function isSpeaking(): boolean {
+  if (currentAudio && !currentAudio.paused && !currentAudio.ended) return true;
+  return isSpeechSynthesisSupported() && window.speechSynthesis.speaking;
+}
+
+/**
+ * Speak via the server (Groq TTS) → play the returned audio through an <audio>
+ * element. Returns true if it played, false if the server TTS was unavailable
+ * (so the caller can fall back to the browser engine). English only.
+ */
+export async function speakViaServer(text: string): Promise<boolean> {
+  const clean = cleanForSpeech(text);
+  if (!clean) return true;
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: clean }),
+    });
+    if (!res.ok) return false;
+    const blob = await res.blob();
+    if (!blob.size) return false;
+    cancelSpeech();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    currentAudio = audio;
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      if (currentAudio === audio) currentAudio = null;
+    };
+    await audio.play();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Best voice available: try the server (reliable audio) first; if it's not set
+ * up, fall back to the browser engine. Use this for anything Vetri says.
+ */
+export async function speakSmart(text: string, lang: "en" | "ta" = "en"): Promise<void> {
+  // Tamil isn't supported by the server voice — go straight to the browser engine.
+  if (lang === "en") {
+    const played = await speakViaServer(text);
+    if (played) return;
+  }
+  speak(text, { lang: lang === "ta" ? "ta-IN" : "en-IN" });
+}
+
 export function cancelSpeech(): void {
   if (isSpeechSynthesisSupported()) window.speechSynthesis.cancel();
+  if (currentAudio) {
+    try {
+      currentAudio.pause();
+    } catch {
+      /* ignore */
+    }
+    currentAudio = null;
+  }
 }
 
 /**
