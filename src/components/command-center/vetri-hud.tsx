@@ -2,10 +2,29 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import { Activity, AlertTriangle, BrainCircuit, Cpu, Database, Maximize2, Minimize2, Mic, Play, RadioTower, Rocket, Shield, Sparkles, Target } from "lucide-react";
+import { Activity, BrainCircuit, Cpu, Database, Maximize2, Minimize2, Mic, Play, RadioTower, Rocket, Shield, Sparkles, Target } from "lucide-react";
 import { formatINR, cn } from "@/lib/utils";
 import { primeSpeech } from "@/lib/speech";
+
+// The WebGL 3D core — client-only, lazy-loaded so it never touches SSR or the
+// initial bundle. Falls back to a CSS core while loading / if it errors.
+const VetriCore3D = dynamic(() => import("@/components/command-center/vetri-core-3d"), {
+  ssr: false,
+  loading: () => <CssCore />,
+});
+
+/** Falls back to the CSS core if WebGL is unavailable or the 3D scene errors. */
+class CoreBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? <CssCore /> : this.props.children;
+  }
+}
 
 // ---------------------------------------------------------------
 // Types
@@ -311,32 +330,40 @@ export function VetriHud({ vitals, providers, counts }: { vitals: VetriVitals; p
 // The 3D holographic core (CSS 3D — a rotating wireframe sphere + arc reactor)
 // ---------------------------------------------------------------
 
+/** The real WebGL 3D core with the target-achievement ring overlaid. */
 function HoloCore({ achievement }: { achievement: number }) {
+  return (
+    <div className="relative flex h-64 w-64 items-center justify-center">
+      {/* Outer progress arc (target achievement) */}
+      <svg viewBox="0 0 256 256" className="pointer-events-none absolute inset-0 h-full w-full -rotate-90">
+        <circle cx="128" cy="128" r="122" fill="none" className="stroke-cyan-500/15" strokeWidth="2" />
+        <circle cx="128" cy="128" r="122" fill="none" className="stroke-cyan-400" strokeWidth="2" strokeLinecap="round" strokeDasharray={2 * Math.PI * 122} strokeDashoffset={2 * Math.PI * 122 * (1 - Math.min(100, achievement) / 100)} style={{ filter: "drop-shadow(0 0 6px rgba(34,211,238,0.8))" }} />
+      </svg>
+      <div className="pointer-events-none absolute inset-5 animate-[spin_30s_linear_infinite] rounded-full border border-dashed border-cyan-400/20" />
+      {/* WebGL 3D core */}
+      <div className="absolute inset-2">
+        <CoreBoundary>
+          <VetriCore3D />
+        </CoreBoundary>
+      </div>
+    </div>
+  );
+}
+
+/** CSS fallback core (rotating wireframe sphere + reactor) — used when WebGL is off. */
+function CssCore() {
   const meridians = [0, 30, 60, 90, 120, 150];
   return (
-    <div className="relative flex h-56 w-56 items-center justify-center" style={{ perspective: "900px" }}>
-      {/* Outer static ring + progress arc */}
-      <svg viewBox="0 0 224 224" className="absolute inset-0 h-full w-full -rotate-90">
-        <circle cx="112" cy="112" r="106" fill="none" className="stroke-cyan-500/15" strokeWidth="2" />
-        <circle cx="112" cy="112" r="106" fill="none" className="stroke-cyan-400" strokeWidth="2" strokeLinecap="round" strokeDasharray={2 * Math.PI * 106} strokeDashoffset={(2 * Math.PI * 106) * (1 - Math.min(100, achievement) / 100)} style={{ filter: "drop-shadow(0 0 6px rgba(34,211,238,0.8))" }} />
-      </svg>
-      <div className="absolute inset-6 animate-[spin_28s_linear_infinite] rounded-full border border-dashed border-cyan-400/25" />
-
-      {/* Rotating wireframe sphere (meridians) */}
+    <div className="relative flex h-full w-full items-center justify-center" style={{ perspective: "900px" }}>
       <div className="relative h-40 w-40" style={{ transformStyle: "preserve-3d", animation: "vetri-spin3d 14s linear infinite" }}>
         {meridians.map((deg) => (
           <div key={deg} className="absolute inset-0 rounded-full border border-cyan-400/30" style={{ transform: `rotateY(${deg}deg)` }} />
         ))}
-        {[-40, 0, 40].map((deg) => (
-          <div key={`lat${deg}`} className="absolute left-1/2 top-1/2 rounded-full border border-blue-400/20" style={{ width: 160 * Math.cos((deg * Math.PI) / 180), height: 160 * Math.cos((deg * Math.PI) / 180), transform: `translate(-50%,-50%) translateZ(${80 * Math.sin((deg * Math.PI) / 180)}px) rotateX(90deg)` }} />
-        ))}
       </div>
-
-      {/* Arc reactor core */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="absolute h-20 w-20 animate-pulse rounded-full bg-cyan-400/30 blur-2xl" />
         <div className="relative flex h-20 w-20 items-center justify-center rounded-full border-2 border-cyan-300/60 bg-gradient-to-br from-cyan-300/40 to-blue-600/40 shadow-[0_0_40px_rgba(34,211,238,0.7)]">
-          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-cyan-200 to-blue-400 shadow-[inset_0_0_10px_rgba(255,255,255,0.7)]" />
+          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-cyan-200 to-blue-400" />
         </div>
       </div>
     </div>

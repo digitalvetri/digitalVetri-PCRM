@@ -160,12 +160,13 @@ export function AiAssistant() {
     setVoiceInSupported(getSpeechCtor() !== null);
     setVoiceOutSupported(isSpeechSynthesisSupported());
     try {
-      // Voice output + hands-free listening (wake word "Vetri" + clap) all default
-      // ON so calling "Vetri" or clapping just works. Clap is robust now (strict
-      // threshold, cooldown, and it's muted while Vetri speaks via isSpeaking()).
+      // Vetri ALWAYS listens (wake word ON by default) and only acts when it
+      // hears "Vetri". Clap defaults OFF: running clap's mic stream alongside the
+      // wake recognizer makes them fight, which broke the wake word. Clap stays
+      // opt-in (the ✋ button) for anyone who wants it instead of the wake word.
       setVoiceOn(localStorage.getItem(VOICE_KEY) !== "0");
-      setClapOn(localStorage.getItem(CLAP_KEY) !== "0");
       setWakeOn(localStorage.getItem(WAKE_KEY) !== "0");
+      setClapOn(localStorage.getItem(CLAP_KEY) === "1");
       const storedLang = localStorage.getItem(LANG_KEY);
       // Default English so English commands ("open calendar") are recognised;
       // Tamil is one tap away (the த toggle). STT language must match what you speak.
