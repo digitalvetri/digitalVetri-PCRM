@@ -27,6 +27,10 @@ ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
     NEXT_PUBLIC_META_PIXEL_ID=$NEXT_PUBLIC_META_PIXEL_ID
 
 # Build the app. Pages are force-dynamic, so no DB is needed to build.
+# Cap Node's heap so `next build` doesn't balloon its RSS and get OOM-killed by
+# the host (this server also runs other Docker stacks — memory is shared).
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--max-old-space-size=2048
 COPY . .
 RUN npx prisma generate && npm run build
 
