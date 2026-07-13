@@ -94,12 +94,41 @@ function stripWakeWord(text: string): string {
 }
 function containsWakeWord(text: string): boolean {
   const t = text.toLowerCase();
-  return WAKE_WORDS.some((w) => t.includes(w));
+  if (WAKE_WORDS.some((w) => t.includes(w))) return true;
+  // Fuzzy: speech-to-text often mishears "Vetri" as victory/petri/veteri/betri.
+  // Catch short words that start like it, without matching long unrelated words.
+  return t.split(/\s+/).some((w) => w.length >= 3 && w.length <= 8 && /^(vet|vic|pet|bet|wet)/.test(w));
 }
 
 /** Mobile browsers don't support continuous background speech recognition. */
 function isMobileDevice(): boolean {
   return typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|Silk|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+// --- Guided client onboarding (multi-turn: ask each detail, then save) ---
+interface OnboardStep {
+  key: "name" | "industry" | "city" | "phone" | "email";
+  q: { en: string; ta: string };
+  required?: boolean;
+}
+const ONBOARD_STEPS: OnboardStep[] = [
+  { key: "name", required: true, q: { en: "Great — a new client! What's the company's name?", ta: "நல்லது — புதிய வாடிக்கையாளர்! நிறுவனத்தின் பெயர் என்ன?" } },
+  { key: "industry", q: { en: "What industry are they in? (say “skip” if unknown)", ta: "எந்தத் துறை? (தெரியாவிட்டால் “skip” சொல்லுங்கள்)" } },
+  { key: "city", q: { en: "Which city are they in? (or skip)", ta: "எந்த நகரம்? (அல்லது skip)" } },
+  { key: "phone", q: { en: "Their phone number? (or skip)", ta: "தொலைபேசி எண்? (அல்லது skip)" } },
+  { key: "email", q: { en: "Their email? (or skip)", ta: "மின்னஞ்சல்? (அல்லது skip)" } },
+];
+function isOnboardingTrigger(text: string): boolean {
+  const t = text.toLowerCase();
+  const hasClient = /(client|customer|company|வாடிக்கையாளர்|கிளையண்ட்|நிறுவனம்)/.test(t);
+  const hasNew = /(new|got|onboard|added|joined|signed|புதிய|கிடைத்த|சேர்)/.test(t);
+  return hasClient && hasNew;
+}
+function isSkip(text: string): boolean {
+  return /^(skip|no|none|na|nil|nothing|dont know|don't know|இல்லை|வேண்டாம்|தெரியாது)/i.test(text.trim());
+}
+function isAbort(text: string): boolean {
+  return /^(cancel|stop|abort|quit|nevermind|never mind|ரத்து|நிறுத்து|வேண்டாம்)/i.test(text.trim());
 }
 
 /** Render a briefing object into a readable chat message. */
@@ -153,6 +182,8 @@ export function AiAssistant() {
   const armExpiryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const ignoreUntilRef = React.useRef(0); // ignore recognizer input while we speak
   const sendRef = React.useRef<(q: string, forceSpeak?: boolean) => void>(() => {});
+  // Guided client-onboarding conversation state (which field we're collecting).
+  const onboardRef = React.useRef<{ step: number; data: Record<string, string> } | null>(null);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const panelInputRef = React.useRef<HTMLInputElement>(null);
@@ -578,9 +609,55 @@ export function AiAssistant() {
 
   function sayOut(text: string, force = false) {
     if (!(voiceOn || force)) return;
-    // Deafen the wake/clap listeners while Vetri talks (isSpeaking() also guards).
-    ignoreUntilRef.current = Date.now() + text.split(/\s+/).length * 420 + 2500;
+    // Only bridge the short gap before the audio starts — isSpeaking() covers the
+    // actual playback, so Vetri starts listening again the moment it stops talking
+    // (fixes "I call it 5 times and it wakes once" — it was staying deaf too long).
+    ignoreUntilRef.current = Date.now() + 1200;
     void speakSmart(text, lang);
+  }
+
+  // --- Guided client onboarding conversation ---
+  function askOnboardStep(i: number, force: boolean) {
+    const q = ONBOARD_STEPS[i].q[lang];
+    setMessages((m) => [...m, { role: "assistant", content: q }]);
+    sayOut(q, force);
+  }
+  function startOnboarding(force: boolean) {
+    onboardRef.current = { step: 0, data: {} };
+    askOnboardStep(0, force);
+  }
+  function finishOnboarding(force: boolean) {
+    const data = onboardRef.current?.data ?? {};
+    onboardRef.current = null;
+    const name = (data.name ?? "").trim();
+    const where = data.city ? (lang === "ta" ? ` (${data.city})` : ` in ${data.city}`) : "";
+    const say = lang === "ta" ? `${name}${where} ஐ கிளையண்ட்டாக சேமிக்கவா? சேமிக்க தட்டவும்.` : `Save ${name}${where} as a client? Tap Save.`;
+    setMessages((m) => [
+      ...m,
+      { role: "assistant", content: say, confirm: { action: "add_company", params: { name, industry: data.industry || null, city: data.city || null, phone: data.phone || null, email: data.email || null }, title: name } },
+    ]);
+    sayOut(say, force);
+  }
+  function handleOnboardAnswer(ans: string, force: boolean) {
+    const state = onboardRef.current;
+    if (!state) return;
+    if (isAbort(ans)) {
+      onboardRef.current = null;
+      const msg = lang === "ta" ? "சரி, ரத்து செய்யப்பட்டது." : "Okay, cancelled.";
+      setMessages((m) => [...m, { role: "assistant", content: msg }]);
+      sayOut(msg, force);
+      return;
+    }
+    const step = ONBOARD_STEPS[state.step];
+    const skip = isSkip(ans);
+    if (step.required && (skip || !ans.trim())) {
+      askOnboardStep(state.step, force); // required field — re-ask
+      return;
+    }
+    state.data[step.key] = skip ? "" : ans.trim();
+    state.step += 1;
+    if (state.step < ONBOARD_STEPS.length) askOnboardStep(state.step, force);
+    else finishOnboarding(force);
   }
 
   async function send(question: string, forceSpeak = false) {
@@ -589,6 +666,16 @@ export function AiAssistant() {
     cancelSpeech();
     setInput("");
     setMessages((m) => [...m, { role: "user", content: question }]);
+
+    // Guided client-onboarding conversation takes over while active.
+    if (onboardRef.current) {
+      handleOnboardAnswer(question, forceSpeak);
+      return;
+    }
+    if (isOnboardingTrigger(question)) {
+      startOnboarding(forceSpeak);
+      return;
+    }
 
     // Fast path for TYPED English navigation only — instant, no AI. Voice and
     // Tamil go through the unified interpreter below so they're never misrouted.
