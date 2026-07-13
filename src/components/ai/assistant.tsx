@@ -484,6 +484,9 @@ export function AiAssistant() {
       disarm();
       return;
     }
+    // The panel lives outside the full-screened HUD, so in full-screen it would be
+    // invisible — exit full-screen so the panel is actually shown.
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     panelInputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
