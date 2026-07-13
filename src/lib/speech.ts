@@ -74,18 +74,17 @@ export function speak(text: string, opts: { lang?: string; rate?: number } = {})
   const target = (opts.lang ?? "en-IN").toLowerCase();
   u.lang = opts.lang ?? "en-IN";
   u.rate = opts.rate ?? 1;
-  // Voice selection: for English, DON'T force a specific voice — the browser's
-  // default is the most reliable. Forcing an exact locale (e.g. macOS "Rishi"
-  // en-IN) can select a listed-but-not-installed voice that plays SILENTLY.
-  // Only override the voice for non-English (e.g. Tamil), preferring a local one.
+  // Voice selection: prefer a LOCAL (offline) voice for the language. Remote
+  // "Google …" voices often play SILENTLY, and an exact locale like macOS
+  // "Rishi" (en-IN) may be listed-but-not-installed (also silent). A local
+  // voice (e.g. Samantha for en) reliably produces sound.
   if (!voiceCache.length) refreshVoices();
   const short = target.split("-")[0];
-  if (short !== "en") {
-    const match =
-      voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short) && v.localService) ??
-      voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short));
-    if (match) u.voice = match;
-  }
+  const pick =
+    voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short) && v.localService) ??
+    voiceCache.find((v) => v.lang?.toLowerCase().startsWith(short)) ??
+    voiceCache.find((v) => v.localService);
+  if (pick) u.voice = pick;
   // Chrome can leave synthesis in a paused state after a cancel(); resume() +
   // speak() unsticks it so the utterance actually plays.
   window.speechSynthesis.resume();
