@@ -97,6 +97,11 @@ function containsWakeWord(text: string): boolean {
   return WAKE_WORDS.some((w) => t.includes(w));
 }
 
+/** Mobile browsers don't support continuous background speech recognition. */
+function isMobileDevice(): boolean {
+  return typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|Silk|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 /** Render a briefing object into a readable chat message. */
 function formatBriefing(b: CeoBriefing): string {
   const L: string[] = [];
@@ -160,13 +165,17 @@ export function AiAssistant() {
     setVoiceInSupported(getSpeechCtor() !== null);
     setVoiceOutSupported(isSpeechSynthesisSupported());
     try {
-      // Vetri ALWAYS listens (wake word ON by default) and only acts when it
-      // hears "Vetri". Clap defaults OFF: running clap's mic stream alongside the
-      // wake recognizer makes them fight, which broke the wake word. Clap stays
-      // opt-in (the ✋ button) for anyone who wants it instead of the wake word.
+      // Voice output is always available. Hands-free listening (wake word + clap)
+      // only works on desktop — mobile browsers can't do continuous background
+      // recognition, so on phones we use tap-to-talk (the mic button) instead.
       setVoiceOn(localStorage.getItem(VOICE_KEY) !== "0");
-      setWakeOn(localStorage.getItem(WAKE_KEY) !== "0");
-      setClapOn(localStorage.getItem(CLAP_KEY) === "1");
+      if (isMobileDevice()) {
+        setWakeOn(false);
+        setClapOn(false);
+      } else {
+        setWakeOn(localStorage.getItem(WAKE_KEY) !== "0");
+        setClapOn(localStorage.getItem(CLAP_KEY) === "1");
+      }
       const storedLang = localStorage.getItem(LANG_KEY);
       // Default English so English commands ("open calendar") are recognised;
       // Tamil is one tap away (the த toggle). STT language must match what you speak.
@@ -220,7 +229,8 @@ export function AiAssistant() {
     if (!Ctor) return;
     const rec = new Ctor();
     rec.lang = langRef.current === "ta" ? "ta-IN" : "en-IN";
-    rec.continuous = true;
+    // Mobile browsers can't do continuous recognition — capture one phrase.
+    rec.continuous = !isMobileDevice();
     rec.interimResults = true;
     rec.onresult = (e) => {
       if (isSpeaking()) return;
@@ -238,6 +248,10 @@ export function AiAssistant() {
       } else if (interim) {
         finalizeSoon();
       }
+    };
+    // On mobile the recognizer ends after a phrase — send what we captured.
+    rec.onend = () => {
+      if (armedRef.current && questionBufRef.current.trim()) finalizeSoon();
     };
     captureRecRef.current = rec;
     try {
