@@ -24,12 +24,13 @@ interface CompanyProfile {
   address: string;
 }
 
-type AiProvider = "openai" | "claude" | "gemini";
+type AiProvider = "openai" | "claude" | "gemini" | "groq";
 
 const AI_PROVIDERS: { value: AiProvider; label: string }[] = [
+  { value: "gemini", label: "Google Gemini (recommended)" },
+  { value: "groq", label: "Groq (Llama — fast & free)" },
   { value: "openai", label: "OpenAI (GPT)" },
   { value: "claude", label: "Anthropic Claude" },
-  { value: "gemini", label: "Google Gemini" },
 ];
 
 async function patchSettings(body: Record<string, unknown>): Promise<void> {

@@ -29,7 +29,7 @@ const companyProfileSchema = z.object({
 });
 
 const patchSchema = z.object({
-  aiProvider: z.enum(["openai", "claude", "gemini"]).optional(),
+  aiProvider: z.enum(["openai", "claude", "gemini", "groq"]).optional(),
   defaultCurrency: z.string().optional(),
   companyProfile: companyProfileSchema.optional(),
   monthlyRevenueTarget: z.number().nonnegative().nullable().optional(),

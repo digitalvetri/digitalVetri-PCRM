@@ -8,8 +8,39 @@
  */
 
 import { ApiError } from "@/lib/api-error";
+import { prisma } from "@/lib/prisma";
 
 export type AiProvider = "openai" | "claude" | "gemini" | "groq";
+
+function normalizeProvider(v?: string | null): AiProvider | null {
+  const p = (v ?? "").toLowerCase();
+  if (p === "claude" || p === "anthropic") return "claude";
+  if (p === "gemini" || p === "google") return "gemini";
+  if (p === "groq") return "groq";
+  if (p === "openai") return "openai";
+  return null;
+}
+
+// Cache the DB-selected provider briefly so a multi-call request doesn't re-query.
+let providerCache: { value: AiProvider; at: number } | null = null;
+
+/**
+ * The active brain: the Settings → AI Provider choice wins (so it can be changed
+ * live from the UI), falling back to the AI_PROVIDER env var, then OpenAI.
+ */
+async function resolveProvider(): Promise<AiProvider> {
+  if (providerCache && Date.now() - providerCache.at < 10_000) return providerCache.value;
+  let value = activeProvider(); // env-based default
+  try {
+    const row = await prisma.appSetting.findUnique({ where: { key: "aiProvider" } });
+    const fromSettings = normalizeProvider(row?.value as string | undefined);
+    if (fromSettings) value = fromSettings;
+  } catch {
+    /* DB unavailable — keep the env-based provider */
+  }
+  providerCache = { value, at: Date.now() };
+  return value;
+}
 
 /** Per-call timeout so a hung provider can't block the request indefinitely. */
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -82,7 +113,7 @@ function callProvider(provider: AiProvider, prompt: string, opts: GenerateOption
 }
 
 export async function generateText(prompt: string, opts: GenerateOptions = {}): Promise<string> {
-  const primary = opts.provider ?? activeProvider();
+  const primary = opts.provider ?? (await resolveProvider());
   try {
     return await callProvider(primary, prompt, opts);
   } catch (err) {

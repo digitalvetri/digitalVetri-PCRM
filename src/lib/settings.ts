@@ -10,7 +10,7 @@ export interface CompanyProfile {
 }
 
 export interface AppSettings {
-  aiProvider: "openai" | "claude" | "gemini";
+  aiProvider: "openai" | "claude" | "gemini" | "groq";
   defaultCurrency: string;
   companyProfile: CompanyProfile;
   /** CEO OS monthly revenue goal in INR (null = not set). */
