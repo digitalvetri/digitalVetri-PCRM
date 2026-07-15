@@ -520,6 +520,85 @@ export async function getAdminDashboard() {
   };
 }
 
+/**
+ * Time & productivity tracking for the admin (web-based, honest signals only:
+ * check-in/out hours, punctuality, completed tasks). No desktop surveillance.
+ */
+export async function getTrackingReport(days = 7) {
+  const start = istStartOfDay();
+  start.setDate(start.getDate() - (days - 1));
+
+  const employees = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", isActive: true },
+    select: { id: true, name: true, employeeProfile: { select: { employeeCode: true, designation: true } } },
+    orderBy: { name: "asc" },
+  });
+  const ids = employees.map((e) => e.id);
+
+  const [attendance, doneTasks] = await Promise.all([
+    prisma.attendance.findMany({
+      where: { userId: { in: ids }, date: { gte: start } },
+      select: { userId: true, date: true, checkIn: true, checkOut: true, status: true },
+    }),
+    prisma.task.findMany({
+      where: { assignedToId: { in: ids }, status: "DONE", completedAt: { gte: start } },
+      select: { assignedToId: true },
+    }),
+  ]);
+
+  const doneByUser = new Map<string, number>();
+  for (const t of doneTasks) if (t.assignedToId) doneByUser.set(t.assignedToId, (doneByUser.get(t.assignedToId) ?? 0) + 1);
+
+  // Day buckets (oldest → newest) for the sparkline.
+  const dayKeys: string[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    dayKeys.push(d.toISOString().slice(0, 10));
+  }
+
+  const rows = employees.map((e) => {
+    const recs = attendance.filter((a) => a.userId === e.id);
+    const perDay = new Map<string, number>(); // minutes by day key
+    let totalMinutes = 0;
+    let present = 0;
+    let lateCount = 0;
+    let firstInSum = 0;
+    let firstInCount = 0;
+    for (const a of recs) {
+      if (a.status === "PRESENT" || a.status === "HALF_DAY") present++;
+      if (a.checkIn && a.checkOut) {
+        const mins = Math.max(0, Math.round((a.checkOut.getTime() - a.checkIn.getTime()) / 60000));
+        totalMinutes += mins;
+        perDay.set(a.date.toISOString().slice(0, 10), (perDay.get(a.date.toISOString().slice(0, 10)) ?? 0) + mins);
+      }
+      if (a.checkIn) {
+        // IST minutes-since-midnight for punctuality (late if after 10:00 IST).
+        const istMins = ((a.checkIn.getTime() + 5.5 * 3600_000) % 86_400_000) / 60000;
+        firstInSum += istMins;
+        firstInCount++;
+        if (istMins > 10 * 60) lateCount++;
+      }
+    }
+    const avgInMins = firstInCount ? Math.round(firstInSum / firstInCount) : null;
+    return {
+      id: e.id,
+      name: e.name,
+      code: e.employeeProfile?.employeeCode ?? "—",
+      designation: e.employeeProfile?.designation ?? null,
+      daysPresent: present,
+      totalMinutes,
+      avgHoursPerDay: present ? Math.round((totalMinutes / present / 60) * 10) / 10 : 0,
+      lateCount,
+      avgCheckIn: avgInMins != null ? `${String(Math.floor(avgInMins / 60)).padStart(2, "0")}:${String(avgInMins % 60).padStart(2, "0")}` : null,
+      tasksDone: doneByUser.get(e.id) ?? 0,
+      spark: dayKeys.map((k) => Math.round(((perDay.get(k) ?? 0) / 60) * 10) / 10),
+    };
+  });
+
+  return { days, dayKeys, rows };
+}
+
 /** Aggregate team analytics for the AI Company People head. */
 export async function getTeamOverview() {
   const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);

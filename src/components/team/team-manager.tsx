@@ -72,6 +72,24 @@ interface Dashboard {
   rows: DashboardRow[];
   risks: { id: string; name: string; reason: string }[];
 }
+interface TrackingRow {
+  id: string;
+  name: string;
+  code: string;
+  designation: string | null;
+  daysPresent: number;
+  totalMinutes: number;
+  avgHoursPerDay: number;
+  lateCount: number;
+  avgCheckIn: string | null;
+  tasksDone: number;
+  spark: number[];
+}
+interface Tracking {
+  days: number;
+  dayKeys: string[];
+  rows: TrackingRow[];
+}
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
@@ -91,18 +109,22 @@ const STATUS_TONE: Record<string, string> = {
   ON_HOLD: "border-amber-500/40 text-amber-600",
 };
 
-export function TeamManager({ employees, projects, leaves, dashboard }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard }) {
+export function TeamManager({ employees, projects, leaves, dashboard, tracking }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking }) {
   const pendingLeave = leaves.filter((l) => l.status === "PENDING").length;
   return (
     <Tabs defaultValue="overview" className="animate-fade-in">
       <TabsList className="h-auto flex-wrap justify-start">
         <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="tracking">Tracking</TabsTrigger>
         <TabsTrigger value="employees">Employees ({employees.length})</TabsTrigger>
         <TabsTrigger value="projects">Projects ({projects.length})</TabsTrigger>
         <TabsTrigger value="leave">Leave{pendingLeave ? ` (${pendingLeave})` : ""}</TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className="mt-4">
         <OverviewTab dashboard={dashboard} />
+      </TabsContent>
+      <TabsContent value="tracking" className="mt-4">
+        <TrackingTab tracking={tracking} />
       </TabsContent>
       <TabsContent value="employees" className="mt-4">
         <EmployeesTab employees={employees} projects={projects} />
@@ -237,6 +259,69 @@ function KpiCard({ icon, label, value, hint, tone }: { icon: React.ReactNode; la
         {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------
+// Tracking — web-based time & productivity (honest signals only)
+// ---------------------------------------------------------------
+
+function TrackingTab({ tracking }: { tracking: Tracking }) {
+  if (tracking.rows.length === 0) {
+    return <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No employees to track yet.</CardContent></Card>;
+  }
+  const maxSpark = Math.max(1, ...tracking.rows.flatMap((r) => r.spark));
+  return (
+    <div className="space-y-4">
+      <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        Web-based tracking over the last {tracking.days} days — from check-in/out times and completed tasks.
+        Punctuality flags check-ins after 10:00 IST. This does not capture screens or keystrokes (that needs a desktop agent).
+      </p>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4 text-primary" /> Time &amp; productivity</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                <th className="py-2">Employee</th>
+                <th className="py-2 text-center">Days</th>
+                <th className="py-2 text-right">Total hrs</th>
+                <th className="py-2 text-right">Avg/day</th>
+                <th className="py-2 text-center">Avg in</th>
+                <th className="py-2 text-center">Late</th>
+                <th className="py-2 text-center">Tasks done</th>
+                <th className="py-2 pl-4">Last {tracking.days}d</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tracking.rows.map((r) => (
+                <tr key={r.id} className="border-b last:border-0">
+                  <td className="py-2.5">
+                    <div className="font-medium">{r.name}</div>
+                    <div className="text-xs text-muted-foreground">{r.designation ?? r.code}</div>
+                  </td>
+                  <td className="py-2.5 text-center tabular-nums">{r.daysPresent}</td>
+                  <td className="py-2.5 text-right tabular-nums">{Math.round((r.totalMinutes / 60) * 10) / 10}h</td>
+                  <td className="py-2.5 text-right tabular-nums">{r.avgHoursPerDay}h</td>
+                  <td className="py-2.5 text-center tabular-nums text-muted-foreground">{r.avgCheckIn ?? "—"}</td>
+                  <td className={cn("py-2.5 text-center tabular-nums", r.lateCount > 0 && "font-semibold text-amber-600")}>{r.lateCount || "—"}</td>
+                  <td className="py-2.5 text-center tabular-nums">{r.tasksDone}</td>
+                  <td className="py-2.5 pl-4">
+                    <div className="flex h-8 items-end gap-0.5">
+                      {r.spark.map((h, i) => (
+                        <div key={i} title={`${h}h`} className="w-2 rounded-sm bg-primary/70" style={{ height: `${Math.max(3, (h / maxSpark) * 100)}%` }} />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
