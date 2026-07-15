@@ -425,7 +425,7 @@ function monthlySummary(records: Data["recentAttendance"]) {
   for (const r of records) {
     const d = new Date(r.date);
     if (d.getFullYear() !== y || d.getMonth() !== mo) continue;
-    if (r.status === "PRESENT" || r.status === "HALF_DAY" || r.status === "WFH") present++;
+    if (r.status === "PRESENT" || r.status === "HALF_DAY") present++;
     else if (r.status === "LEAVE") leave++;
   }
   return { present, leave };
@@ -447,10 +447,10 @@ const isPast = (iso: string | null) => {
 
 const ATT_TONE: Record<string, string> = {
   PRESENT: "bg-emerald-500 text-white",
-  WFH: "bg-emerald-500 text-white",
   HALF_DAY: "bg-amber-400 text-white",
   LEAVE: "bg-blue-500 text-white",
   ABSENT: "bg-red-400 text-white",
+  HOLIDAY: "bg-muted-foreground/30 text-foreground",
 };
 
 function AttendanceCalendar({ records }: { records: Data["recentAttendance"] }) {
@@ -721,7 +721,7 @@ function RecentAttendance({ records }: { records: Data["recentAttendance"] }) {
               <li key={i} className="flex items-center justify-between gap-2 py-2 text-sm">
                 <span className="font-medium">{fmtDate(r.date)}</span>
                 <span className="text-xs text-muted-foreground">{fmtTime(r.checkIn)} – {fmtTime(r.checkOut)}</span>
-                <Badge variant="outline" className={cn("text-[10px]", r.status === "PRESENT" || r.status === "WFH" ? "text-emerald-600 border-emerald-500/40" : r.status === "LEAVE" ? "text-blue-600 border-blue-500/40" : r.status === "HALF_DAY" ? "text-amber-600 border-amber-500/40" : "text-red-600 border-red-500/40")}>{r.status}</Badge>
+                <Badge variant="outline" className={cn("text-[10px]", r.status === "PRESENT" ? "text-emerald-600 border-emerald-500/40" : r.status === "LEAVE" ? "text-blue-600 border-blue-500/40" : r.status === "HALF_DAY" ? "text-amber-600 border-amber-500/40" : r.status === "HOLIDAY" ? "text-muted-foreground" : "text-red-600 border-red-500/40")}>{r.status}</Badge>
               </li>
             ))}
           </ul>

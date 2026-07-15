@@ -412,6 +412,114 @@ export async function createReview(input: {
   });
 }
 
+/**
+ * Executive dashboard for the admin: today's live team status + workloads + risks.
+ * All from real records — no fabricated activity.
+ */
+export async function getAdminDashboard() {
+  const today = istStartOfDay();
+  const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+  const now = new Date();
+
+  const employees = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", isActive: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      employeeProfile: { select: { employeeCode: true, designation: true, department: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+  const ids = employees.map((e) => e.id);
+
+  const [todayAtt, openTasks, activeLeaves, recentAtt, pendingLeave, activeProjects, reviews] = await Promise.all([
+    prisma.attendance.findMany({ where: { userId: { in: ids }, date: today }, select: { userId: true, checkIn: true, checkOut: true, status: true } }),
+    prisma.task.findMany({ where: { assignedToId: { in: ids }, status: { not: "DONE" } }, select: { assignedToId: true, dueDate: true } }),
+    prisma.leaveRequest.findMany({ where: { userId: { in: ids }, status: "APPROVED", startDate: { lte: today }, endDate: { gte: today } }, select: { userId: true } }),
+    prisma.attendance.findMany({ where: { userId: { in: ids }, date: { gte: since } }, select: { userId: true, status: true } }),
+    prisma.leaveRequest.count({ where: { status: "PENDING" } }),
+    prisma.project.count({ where: { status: "ACTIVE" } }),
+    prisma.performanceReview.findMany({ where: { createdAt: { gte: since } }, select: { rating: true } }),
+  ]);
+
+  const attByUser = new Map(todayAtt.map((a) => [a.userId, a]));
+  const onLeave = new Set(activeLeaves.map((l) => l.userId));
+  const openByUser = new Map<string, number>();
+  const overdueByUser = new Map<string, number>();
+  for (const t of openTasks) {
+    if (!t.assignedToId) continue;
+    openByUser.set(t.assignedToId, (openByUser.get(t.assignedToId) ?? 0) + 1);
+    if (t.dueDate && t.dueDate < now) overdueByUser.set(t.assignedToId, (overdueByUser.get(t.assignedToId) ?? 0) + 1);
+  }
+  const presentByUser = new Map<string, { present: number; total: number }>();
+  for (const a of recentAtt) {
+    const cur = presentByUser.get(a.userId) ?? { present: 0, total: 0 };
+    cur.total++;
+    if (a.status === "PRESENT" || a.status === "HALF_DAY") cur.present++;
+    presentByUser.set(a.userId, cur);
+  }
+
+  const rows = employees.map((e) => {
+    const att = attByUser.get(e.id);
+    const leave = onLeave.has(e.id);
+    const status: "PRESENT" | "CHECKED_OUT" | "LEAVE" | "ABSENT" = leave
+      ? "LEAVE"
+      : att?.checkOut
+        ? "CHECKED_OUT"
+        : att?.checkIn
+          ? "PRESENT"
+          : "ABSENT";
+    const p = presentByUser.get(e.id);
+    const attendanceRate = p && p.total ? Math.round((p.present / p.total) * 100) : null;
+    const overdue = overdueByUser.get(e.id) ?? 0;
+    return {
+      id: e.id,
+      name: e.name,
+      email: e.email,
+      code: e.employeeProfile?.employeeCode ?? "—",
+      designation: e.employeeProfile?.designation ?? null,
+      department: e.employeeProfile?.department ?? null,
+      status,
+      checkIn: att?.checkIn?.toISOString() ?? null,
+      checkOut: att?.checkOut?.toISOString() ?? null,
+      openTasks: openByUser.get(e.id) ?? 0,
+      overdueTasks: overdue,
+      attendanceRate,
+    };
+  });
+
+  const presentToday = rows.filter((r) => r.status === "PRESENT" || r.status === "CHECKED_OUT").length;
+  const onLeaveToday = rows.filter((r) => r.status === "LEAVE").length;
+  const absentToday = rows.filter((r) => r.status === "ABSENT").length;
+  const totalOpen = openTasks.length;
+  const totalOverdue = openTasks.filter((t) => t.dueDate && t.dueDate < now).length;
+  const avgRating = reviews.length ? Number((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)) : null;
+
+  // Risk flags: things an admin should look at today.
+  const risks = rows
+    .filter((r) => r.overdueTasks > 0 || (r.attendanceRate != null && r.attendanceRate < 60))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      reason: r.overdueTasks > 0 ? `${r.overdueTasks} overdue task${r.overdueTasks > 1 ? "s" : ""}` : `Low attendance (${r.attendanceRate}%)`,
+    }));
+
+  return {
+    headcount: employees.length,
+    presentToday,
+    onLeaveToday,
+    absentToday,
+    pendingLeave,
+    activeProjects,
+    totalOpen,
+    totalOverdue,
+    avgRating,
+    rows,
+    risks,
+  };
+}
+
 /** Aggregate team analytics for the AI Company People head. */
 export async function getTeamOverview() {
   const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);

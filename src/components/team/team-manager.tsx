@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Loader2, Plus, UserPlus, X } from "lucide-react";
+import { AlertTriangle, Briefcase, Check, Clock, Loader2, Plane, Plus, UserCheck, UserPlus, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,33 @@ interface LeaveRow {
   status: string;
   reviewNote: string | null;
 }
+interface DashboardRow {
+  id: string;
+  name: string;
+  email: string;
+  code: string;
+  designation: string | null;
+  department: string | null;
+  status: "PRESENT" | "CHECKED_OUT" | "LEAVE" | "ABSENT";
+  checkIn: string | null;
+  checkOut: string | null;
+  openTasks: number;
+  overdueTasks: number;
+  attendanceRate: number | null;
+}
+interface Dashboard {
+  headcount: number;
+  presentToday: number;
+  onLeaveToday: number;
+  absentToday: number;
+  pendingLeave: number;
+  activeProjects: number;
+  totalOpen: number;
+  totalOverdue: number;
+  avgRating: number | null;
+  rows: DashboardRow[];
+  risks: { id: string; name: string; reason: string }[];
+}
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
@@ -64,15 +91,19 @@ const STATUS_TONE: Record<string, string> = {
   ON_HOLD: "border-amber-500/40 text-amber-600",
 };
 
-export function TeamManager({ employees, projects, leaves }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[] }) {
+export function TeamManager({ employees, projects, leaves, dashboard }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard }) {
   const pendingLeave = leaves.filter((l) => l.status === "PENDING").length;
   return (
-    <Tabs defaultValue="employees" className="animate-fade-in">
+    <Tabs defaultValue="overview" className="animate-fade-in">
       <TabsList className="h-auto flex-wrap justify-start">
+        <TabsTrigger value="overview">Overview</TabsTrigger>
         <TabsTrigger value="employees">Employees ({employees.length})</TabsTrigger>
         <TabsTrigger value="projects">Projects ({projects.length})</TabsTrigger>
         <TabsTrigger value="leave">Leave{pendingLeave ? ` (${pendingLeave})` : ""}</TabsTrigger>
       </TabsList>
+      <TabsContent value="overview" className="mt-4">
+        <OverviewTab dashboard={dashboard} />
+      </TabsContent>
       <TabsContent value="employees" className="mt-4">
         <EmployeesTab employees={employees} projects={projects} />
       </TabsContent>
@@ -83,6 +114,129 @@ export function TeamManager({ employees, projects, leaves }: { employees: Employ
         <LeaveTab leaves={leaves} />
       </TabsContent>
     </Tabs>
+  );
+}
+
+// ---------------------------------------------------------------
+// Overview — executive dashboard
+// ---------------------------------------------------------------
+
+const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
+
+const DASH_STATUS: Record<DashboardRow["status"], { label: string; cls: string; dot: string }> = {
+  PRESENT: { label: "Present", cls: "text-emerald-600 border-emerald-500/40", dot: "bg-emerald-500" },
+  CHECKED_OUT: { label: "Checked out", cls: "text-blue-600 border-blue-500/40", dot: "bg-blue-500" },
+  LEAVE: { label: "On leave", cls: "text-amber-600 border-amber-500/40", dot: "bg-amber-500" },
+  ABSENT: { label: "Absent", cls: "text-muted-foreground border-border", dot: "bg-muted-foreground/40" },
+};
+
+function OverviewTab({ dashboard: d }: { dashboard: Dashboard }) {
+  const present = d.rows.filter((r) => r.status === "PRESENT");
+  const checkedOut = d.rows.filter((r) => r.status === "CHECKED_OUT");
+  const leave = d.rows.filter((r) => r.status === "LEAVE");
+  const absent = d.rows.filter((r) => r.status === "ABSENT");
+  const ordered = [...present, ...checkedOut, ...leave, ...absent];
+
+  if (d.headcount === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          No employees yet. Create logins from the <span className="font-medium text-foreground">Employees</span> tab to see the live team dashboard here.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard icon={<UserCheck className="h-4 w-4" />} tone="emerald" label="Present today" value={`${d.presentToday}/${d.headcount}`} hint={`${d.onLeaveToday} on leave · ${d.absentToday} absent`} />
+        <KpiCard icon={<Clock className="h-4 w-4" />} tone={d.totalOverdue ? "amber" : "primary"} label="Open tasks" value={String(d.totalOpen)} hint={d.totalOverdue ? `${d.totalOverdue} overdue` : "on track"} />
+        <KpiCard icon={<Briefcase className="h-4 w-4" />} tone="primary" label="Active projects" value={String(d.activeProjects)} hint={d.avgRating ? `${d.avgRating}★ avg review` : "no reviews yet"} />
+        <KpiCard icon={<Plane className="h-4 w-4" />} tone={d.pendingLeave ? "amber" : "primary"} label="Leave to review" value={String(d.pendingLeave)} hint={d.pendingLeave ? "needs action" : "all clear"} />
+      </div>
+
+      {/* Risk flags */}
+      {d.risks.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/[0.03]">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-amber-700"><AlertTriangle className="h-4 w-4" /> Needs your attention</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {d.risks.map((r) => (
+                <span key={r.id} className="rounded-full border border-amber-500/40 bg-background px-3 py-1 text-xs">
+                  <span className="font-medium">{r.name}</span> · <span className="text-muted-foreground">{r.reason}</span>
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live roster */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4 text-primary" /> Today&apos;s team</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                <th className="py-2">Employee</th>
+                <th className="py-2">Status</th>
+                <th className="py-2">Hours</th>
+                <th className="py-2 text-center">Open</th>
+                <th className="py-2 text-center">Overdue</th>
+                <th className="py-2 text-right">Attendance 60d</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordered.map((r) => {
+                const s = DASH_STATUS[r.status];
+                return (
+                  <tr key={r.id} className="border-b last:border-0">
+                    <td className="py-2.5">
+                      <div className="font-medium">{r.name}</div>
+                      <div className="text-xs text-muted-foreground">{r.designation ?? r.code}{r.department ? ` · ${r.department}` : ""}</div>
+                    </td>
+                    <td className="py-2.5">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={cn("h-2 w-2 rounded-full", s.dot)} />
+                        <span className="text-xs">{s.label}</span>
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-xs text-muted-foreground">{r.checkIn ? `${fmtTime(r.checkIn)}${r.checkOut ? ` – ${fmtTime(r.checkOut)}` : ""}` : "—"}</td>
+                    <td className="py-2.5 text-center tabular-nums">{r.openTasks}</td>
+                    <td className={cn("py-2.5 text-center tabular-nums", r.overdueTasks > 0 && "font-semibold text-red-600")}>{r.overdueTasks || "—"}</td>
+                    <td className="py-2.5 text-right">
+                      {r.attendanceRate != null ? (
+                        <span className={cn("tabular-nums", r.attendanceRate < 60 ? "text-red-600" : r.attendanceRate < 80 ? "text-amber-600" : "text-emerald-600")}>{r.attendanceRate}%</span>
+                      ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function KpiCard({ icon, label, value, hint, tone }: { icon: React.ReactNode; label: string; value: string; hint?: string; tone?: "amber" | "emerald" | "primary" }) {
+  const toneCls = tone === "amber" ? "bg-amber-500/10 text-amber-600" : tone === "emerald" ? "bg-emerald-500/10 text-emerald-600" : "bg-primary/10 text-primary";
+  return (
+    <Card className="shadow-sm">
+      <CardContent className="p-4">
+        <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", toneCls)}>{icon}</span>
+        <div className="mt-3 text-2xl font-bold tabular-nums leading-none">{value}</div>
+        <div className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+        {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
+      </CardContent>
+    </Card>
   );
 }
 
