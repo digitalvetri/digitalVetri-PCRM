@@ -53,6 +53,9 @@ model User {
   authoredReviews     PerformanceReview[] @relation("ReviewAuthor")
   chatMessages        ChatMessage[]
   announcements       Announcement[]
+  timesheets          TimesheetEntry[]
+  kbArticles          KbArticle[]
+  goals               Goal[]              @relation("GoalOwner")
 
   @@index([clerkId])
   @@index([role])
@@ -82,6 +85,69 @@ model Announcement {
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+}
+
+/// Employee-logged hours per day (optionally against a project).
+model TimesheetEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String?
+  date      DateTime
+  hours     Float
+  note      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+/// Internal knowledge base / wiki. Admins author, everyone reads.
+model KbArticle {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  category  String?
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([category])
+}
+
+/// Company holidays (shown on attendance calendars).
+model Holiday {
+  id   String   @id @default(cuid())
+  date DateTime @unique
+  name String
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+/// Employee goals / OKRs with measurable progress.
+model Goal {
+  id          String     @id @default(cuid())
+  userId      String
+  title       String
+  detail      String?
+  target      Float      @default(100)
+  current     Float      @default(0)
+  unit        String?
+  dueDate     DateTime?
+  status      GoalStatus @default(ACTIVE)
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user User @relation("GoalOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ============================================================

@@ -1,6 +1,10 @@
 import { getCurrentUser } from "@/lib/rbac";
 import { getEmployeeSelf, getEmployeePerformance } from "@/lib/hr";
 import { listAnnouncements } from "@/lib/announcements";
+import { listTimesheet } from "@/lib/timesheet";
+import { listGoals } from "@/lib/goals";
+import { upcomingHolidays, getLeaveBalances } from "@/lib/holidays";
+import { listArticles } from "@/lib/kb";
 import { EmployeePortal } from "@/components/employee/employee-portal";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +14,15 @@ export default async function MePage() {
   const user = await getCurrentUser();
   if (!user) return null; // layout already redirects; satisfies types
 
-  const [self, performance, announcements] = await Promise.all([
+  const [self, performance, announcements, timesheet, goals, holidays, leaveBalances, articles] = await Promise.all([
     getEmployeeSelf(user.id),
     getEmployeePerformance(user.id),
     listAnnouncements(10),
+    listTimesheet(user.id),
+    listGoals(user.id),
+    upcomingHolidays(8),
+    getLeaveBalances(user.id),
+    listArticles(),
   ]);
 
   const data = {
@@ -93,6 +102,32 @@ export default async function MePage() {
       pinned: a.pinned,
       author: a.author.name,
       createdAt: a.createdAt.toISOString(),
+    })),
+    timesheet: timesheet.map((t) => ({
+      id: t.id,
+      projectId: t.projectId,
+      date: t.date.toISOString(),
+      hours: t.hours,
+      note: t.note,
+    })),
+    goals: goals.map((g) => ({
+      id: g.id,
+      title: g.title,
+      detail: g.detail,
+      target: g.target,
+      current: g.current,
+      unit: g.unit,
+      dueDate: g.dueDate?.toISOString() ?? null,
+      status: g.status,
+    })),
+    holidays: holidays.map((h) => ({ id: h.id, date: h.date.toISOString(), name: h.name })),
+    leaveBalances,
+    articles: articles.map((a) => ({
+      id: a.id,
+      title: a.title,
+      category: a.category,
+      author: a.author.name,
+      updatedAt: a.updatedAt.toISOString(),
     })),
     performance,
   };

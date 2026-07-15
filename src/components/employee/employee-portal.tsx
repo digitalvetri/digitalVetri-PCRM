@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { toast } from "sonner";
 import {
+  BarChart3,
   Bell,
+  BookOpen,
   Briefcase,
   CalendarDays,
   CheckCircle2,
@@ -29,6 +31,9 @@ import {
   Star,
   Sparkles,
   Sun,
+  Target,
+  Timer,
+  Trash2,
   TrendingUp,
   Wallet,
   X,
@@ -61,6 +66,11 @@ interface Data {
   reviews: { id: string; period: string; rating: number; strengths: string | null; improvements: string | null; comments: string | null; createdAt: string }[];
   tasks: TaskItem[];
   announcements: { id: string; title: string; body: string; pinned: boolean; author: string; createdAt: string }[];
+  timesheet: { id: string; projectId: string | null; date: string; hours: number; note: string | null }[];
+  goals: { id: string; title: string; detail: string | null; target: number; current: number; unit: string | null; dueDate: string | null; status: string }[];
+  holidays: { id: string; date: string; name: string }[];
+  leaveBalances: { type: string; allowance: number; used: number; remaining: number }[];
+  articles: { id: string; title: string; category: string | null; author: string; updatedAt: string }[];
   performance: { attendanceRate: number | null; avgRating: number | null; projectCount: number; score: number; reviewCount: number };
 }
 
@@ -92,7 +102,7 @@ const QUOTES = [
   "Done is better than perfect — then make it better.",
 ];
 
-type TabKey = "dashboard" | "tasks" | "attendance" | "projects" | "leave" | "payslips" | "reviews" | "chat";
+type TabKey = "dashboard" | "tasks" | "timesheet" | "attendance" | "projects" | "goals" | "knowledge" | "chat" | "leave" | "payslips" | "reviews" | "reports";
 
 export function EmployeePortal({ name, email, data }: { name: string; email: string; data: Data }) {
   const router = useRouter();
@@ -143,15 +153,20 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
   const pct = data.tasks.length ? Math.round((doneCount / data.tasks.length) * 100) : 0;
   const pendingLeave = data.leaves.filter((l) => l.status === "PENDING").length;
 
+  const activeGoals = data.goals.filter((g) => g.status === "ACTIVE").length;
   const nav: { key: TabKey; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
     { key: "tasks", label: "My Tasks", icon: <ListChecks className="h-4 w-4" />, badge: openCount || undefined },
+    { key: "timesheet", label: "Timesheet", icon: <Timer className="h-4 w-4" /> },
     { key: "attendance", label: "Attendance", icon: <CalendarDays className="h-4 w-4" /> },
     { key: "projects", label: "Projects", icon: <Briefcase className="h-4 w-4" />, badge: data.assignments.length || undefined },
+    { key: "goals", label: "Goals", icon: <Target className="h-4 w-4" />, badge: activeGoals || undefined },
+    { key: "knowledge", label: "Knowledge", icon: <BookOpen className="h-4 w-4" /> },
     { key: "chat", label: "Team Chat", icon: <MessageSquare className="h-4 w-4" /> },
     { key: "leave", label: "Leave", icon: <Plane className="h-4 w-4" />, badge: pendingLeave || undefined },
     { key: "payslips", label: "Payslips", icon: <Wallet className="h-4 w-4" /> },
     { key: "reviews", label: "Reviews", icon: <Star className="h-4 w-4" /> },
+    { key: "reports", label: "Reports", icon: <BarChart3 className="h-4 w-4" /> },
   ];
 
   const activeItem = nav.find((n) => n.key === tab);
@@ -258,12 +273,22 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           </>
         )}
 
+        {tab === "timesheet" && (
+          <>
+            <PageTitle icon={<Timer className="h-5 w-5" />} title="Timesheet" subtitle="Log your hours by day and project." />
+            <TimesheetTab entries={data.timesheet} assignments={data.assignments} post={post} onChange={() => router.refresh()} />
+          </>
+        )}
+
         {tab === "attendance" && (
           <>
-            <PageTitle icon={<CalendarDays className="h-5 w-5" />} title="Attendance" subtitle="Your check-ins for the last few weeks." />
+            <PageTitle icon={<CalendarDays className="h-5 w-5" />} title="Attendance" subtitle="Your check-ins and upcoming holidays." />
             <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
-              <AttendanceCalendar records={data.recentAttendance} />
-              <RecentAttendance records={data.recentAttendance} />
+              <AttendanceCalendar records={data.recentAttendance} holidays={data.holidays} />
+              <div className="space-y-5">
+                <RecentAttendance records={data.recentAttendance} />
+                <HolidaysCard holidays={data.holidays} />
+              </div>
             </div>
           </>
         )}
@@ -272,6 +297,27 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           <>
             <PageTitle icon={<Briefcase className="h-5 w-5" />} title="Projects" subtitle="What you're assigned to." />
             <ProjectsGrid assignments={data.assignments} />
+          </>
+        )}
+
+        {tab === "goals" && (
+          <>
+            <PageTitle icon={<Target className="h-5 w-5" />} title="Goals & OKRs" subtitle="Set targets and track your progress." />
+            <GoalsTab goals={data.goals} post={post} onChange={() => router.refresh()} />
+          </>
+        )}
+
+        {tab === "knowledge" && (
+          <>
+            <PageTitle icon={<BookOpen className="h-5 w-5" />} title="Knowledge Base" subtitle="Team docs, SOPs and how-tos." />
+            <KnowledgeTab articles={data.articles} />
+          </>
+        )}
+
+        {tab === "reports" && (
+          <>
+            <PageTitle icon={<BarChart3 className="h-5 w-5" />} title="My Reports" subtitle="Your hours and productivity trends." />
+            <ReportsTab data={data} />
           </>
         )}
 
@@ -285,6 +331,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
         {tab === "leave" && (
           <>
             <PageTitle icon={<Plane className="h-5 w-5" />} title="Leave" subtitle="Request time off and track approvals." />
+            <LeaveBalances balances={data.leaveBalances} />
             <Card className="shadow-sm">
               <CardContent className="pt-5">
                 <LeaveForm onDone={() => router.refresh()} />
@@ -601,7 +648,7 @@ const ATT_TONE: Record<string, string> = {
   HOLIDAY: "bg-muted-foreground/30 text-foreground",
 };
 
-function AttendanceCalendar({ records }: { records: Data["recentAttendance"] }) {
+function AttendanceCalendar({ records, holidays = [] }: { records: Data["recentAttendance"]; holidays?: Data["holidays"] }) {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -611,6 +658,11 @@ function AttendanceCalendar({ records }: { records: Data["recentAttendance"] }) 
   for (const r of records) {
     const d = new Date(r.date);
     if (d.getFullYear() === year && d.getMonth() === month) map.set(d.getDate(), r.status);
+  }
+  const holidayMap = new Map<number, string>();
+  for (const h of holidays) {
+    const d = new Date(h.date);
+    if (d.getFullYear() === year && d.getMonth() === month) holidayMap.set(d.getDate(), h.name);
   }
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
@@ -632,17 +684,18 @@ function AttendanceCalendar({ records }: { records: Data["recentAttendance"] }) 
           {cells.map((d, i) => {
             if (d === null) return <div key={i} />;
             const status = map.get(d);
-            const tone = status ? ATT_TONE[status] : "";
+            const holiday = holidayMap.get(d);
+            const tone = status ? ATT_TONE[status] : holiday ? "bg-violet-500 text-white" : "";
             const isTodayCell = d === today;
             return (
               <div
                 key={i}
-                title={status ? `${d}: ${status}` : String(d)}
+                title={holiday ? `${d}: ${holiday}` : status ? `${d}: ${status}` : String(d)}
                 className={cn(
                   "flex aspect-square items-center justify-center rounded-md text-xs font-medium",
                   tone || "text-muted-foreground",
-                  !status && isTodayCell && "ring-2 ring-primary",
-                  status && isTodayCell && "ring-2 ring-offset-1 ring-primary",
+                  !status && !holiday && isTodayCell && "ring-2 ring-primary",
+                  (status || holiday) && isTodayCell && "ring-2 ring-offset-1 ring-primary",
                 )}
               >
                 {d}
@@ -655,6 +708,7 @@ function AttendanceCalendar({ records }: { records: Data["recentAttendance"] }) 
           <Legend color="bg-amber-400" label="Half day" />
           <Legend color="bg-blue-500" label="Leave" />
           <Legend color="bg-red-400" label="Absent" />
+          <Legend color="bg-violet-500" label="Holiday" />
         </div>
       </CardContent>
     </Card>
@@ -1000,6 +1054,361 @@ function ReviewsList({ reviews }: { reviews: Data["reviews"] }) {
           </CardContent>
         </Card>
       ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Timesheet
+// ---------------------------------------------------------------
+
+function TimesheetTab({
+  entries,
+  assignments,
+  post,
+  onChange,
+}: {
+  entries: Data["timesheet"];
+  assignments: Data["assignments"];
+  post: (url: string, body?: unknown, method?: string) => Promise<unknown>;
+  onChange: () => void;
+}) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = React.useState(todayStr);
+  const [hours, setHours] = React.useState("");
+  const [projectId, setProjectId] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const projName = (id: string | null) => assignments.find((a) => a.project.id === id)?.project.name ?? null;
+
+  const weekTotal = entries
+    .filter((e) => { const d = new Date(e.date); const diff = (Date.now() - d.getTime()) / 86_400_000; return diff <= 7; })
+    .reduce((s, e) => s + e.hours, 0);
+  const totalAll = entries.reduce((s, e) => s + e.hours, 0);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    const h = parseFloat(hours);
+    if (!(h > 0)) return toast.error("Enter hours");
+    setBusy(true);
+    try {
+      await post("/api/me/timesheet", { date, hours: h, projectId: projectId || undefined, note: note || undefined });
+      setHours("");
+      setNote("");
+      toast.success("Logged");
+      onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(id: string) {
+    try { await post(`/api/me/timesheet/${id}`, {}, "DELETE"); onChange(); } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <MetricCard icon={<Timer className="h-4 w-4" />} tone="primary" label="Last 7 days" value={`${Math.round(weekTotal * 10) / 10}h`} />
+        <MetricCard icon={<Clock className="h-4 w-4" />} tone="emerald" label="Logged (21d)" value={`${Math.round(totalAll * 10) / 10}h`} />
+        <MetricCard icon={<ListChecks className="h-4 w-4" />} tone="amber" label="Entries" value={String(entries.length)} />
+      </div>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3"><CardTitle className="text-base">Log time</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={add} className="grid gap-2 sm:grid-cols-[auto_auto_1fr_auto]">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" />
+            <input type="number" step="0.25" min="0" max="24" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Hours" className="h-9 w-24 rounded-md border bg-background px-2 text-sm" />
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
+              <option value="">No project</option>
+              {assignments.map((a) => <option key={a.project.id} value={a.project.id}>{a.project.name}</option>)}
+            </select>
+            <Button type="submit" size="sm" disabled={busy || !hours}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Log</Button>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" className="h-9 rounded-md border bg-background px-3 text-sm sm:col-span-4" />
+          </form>
+        </CardContent>
+      </Card>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3"><CardTitle className="text-base">Recent entries</CardTitle></CardHeader>
+        <CardContent>
+          {entries.length === 0 ? (
+            <Empty>No time logged yet.</Empty>
+          ) : (
+            <ul className="divide-y">
+              {entries.map((e) => (
+                <li key={e.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-medium tabular-nums">{e.hours}h</span> · {fmtDate(e.date)}
+                    {projName(e.projectId) && <span className="text-muted-foreground"> · {projName(e.projectId)}</span>}
+                    {e.note && <span className="text-muted-foreground"> · {e.note}</span>}
+                  </div>
+                  <button onClick={() => remove(e.id)} aria-label="Delete" className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Holidays + leave balances
+// ---------------------------------------------------------------
+
+function HolidaysCard({ holidays }: { holidays: Data["holidays"] }) {
+  return (
+    <Card className="shadow-sm">
+      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><span className="text-violet-500"><CalendarDays className="h-4 w-4" /></span> Upcoming holidays</CardTitle></CardHeader>
+      <CardContent>
+        {holidays.length === 0 ? (
+          <Empty>No holidays scheduled.</Empty>
+        ) : (
+          <ul className="divide-y">
+            {holidays.map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span className="font-medium">{h.name}</span>
+                <span className="text-xs text-muted-foreground">{fmtDate(h.date)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeaveBalances({ balances }: { balances: Data["leaveBalances"] }) {
+  const shown = balances.filter((b) => b.allowance > 0);
+  if (shown.length === 0) return null;
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {shown.map((b) => (
+        <Card key={b.type} className="shadow-sm">
+          <CardContent className="p-4">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{b.type}</div>
+            <div className="mt-1 text-2xl font-bold tabular-nums leading-none">{b.remaining}<span className="text-sm font-normal text-muted-foreground">/{b.allowance}</span></div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{b.used} used · days left</div>
+            <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${b.allowance ? (b.used / b.allowance) * 100 : 0}%` }} />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Goals / OKRs
+// ---------------------------------------------------------------
+
+function GoalsTab({ goals, post, onChange }: { goals: Data["goals"]; post: (url: string, body?: unknown, method?: string) => Promise<unknown>; onChange: () => void }) {
+  const [title, setTitle] = React.useState("");
+  const [target, setTarget] = React.useState("");
+  const [unit, setUnit] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true);
+    try {
+      await post("/api/me/goals", { title, target: target ? parseFloat(target) : undefined, unit: unit || undefined });
+      setTitle(""); setTarget(""); setUnit(""); setOpen(false);
+      toast.success("Goal added");
+      onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function setProgress(id: string, current: number) {
+    try { await post(`/api/me/goals/${id}`, { current }, "PATCH"); onChange(); } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+  }
+  async function remove(id: string) {
+    try { await post(`/api/me/goals/${id}`, {}, "DELETE"); onChange(); } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+  }
+
+  return (
+    <div className="space-y-4">
+      {!open ? (
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> New goal</Button>
+      ) : (
+        <Card className="shadow-sm">
+          <CardContent className="pt-5">
+            <form onSubmit={add} className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Close 5 deals this quarter" className="h-9 rounded-md border bg-background px-3 text-sm" />
+              <input type="number" min="1" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Target" className="h-9 w-24 rounded-md border bg-background px-2 text-sm" />
+              <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="unit" className="h-9 w-24 rounded-md border bg-background px-2 text-sm" />
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" disabled={busy || !title.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Add</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+      {goals.length === 0 ? (
+        <Card className="shadow-sm"><CardContent className="py-8"><Empty>No goals yet. Set one to track your progress.</Empty></CardContent></Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {goals.map((g) => {
+            const pct = g.target ? Math.min(100, Math.round((g.current / g.target) * 100)) : 0;
+            const done = g.status === "COMPLETED";
+            return (
+              <Card key={g.id} className="shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{g.title}</span>
+                      {done && <Badge variant="outline" className="border-emerald-500/40 text-[10px] text-emerald-600">Done</Badge>}
+                    </div>
+                    <button onClick={() => remove(g.id)} aria-label="Delete" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                  {g.detail && <p className="mt-0.5 text-sm text-muted-foreground">{g.detail}</p>}
+                  <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="tabular-nums">{g.current}{g.unit ? ` ${g.unit}` : ""} / {g.target}{g.unit ? ` ${g.unit}` : ""}</span>
+                    <span className="font-semibold text-foreground">{pct}%</span>
+                  </div>
+                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div className={cn("h-full rounded-full transition-all", done ? "bg-emerald-500" : "bg-primary")} style={{ width: `${pct}%` }} />
+                  </div>
+                  {!done && (
+                    <div className="mt-3 flex items-center gap-1">
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setProgress(g.id, Math.max(0, g.current - 1))}>−</Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setProgress(g.id, g.current + 1)}>+1</Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setProgress(g.id, g.target)}>Mark done</Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Knowledge base
+// ---------------------------------------------------------------
+
+function KnowledgeTab({ articles }: { articles: Data["articles"] }) {
+  const [q, setQ] = React.useState("");
+  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [article, setArticle] = React.useState<{ id: string; title: string; body: string; category: string | null; author: { name: string }; updatedAt: string } | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  const filtered = articles.filter((a) => (a.title + (a.category ?? "")).toLowerCase().includes(q.toLowerCase()));
+  const groups = filtered.reduce((acc, a) => { const k = a.category || "General"; (acc[k] ||= []).push(a); return acc; }, {} as Record<string, Data["articles"]>);
+
+  async function open(id: string) {
+    setOpenId(id); setArticle(null); setLoading(true);
+    try {
+      const res = await fetch(`/api/kb/${id}`);
+      const json = await res.json();
+      if (res.ok) setArticle(json.article);
+    } finally { setLoading(false); }
+  }
+
+  if (openId) {
+    return (
+      <Card className="shadow-sm">
+        <CardContent className="pt-5">
+          <Button size="sm" variant="ghost" className="mb-3" onClick={() => { setOpenId(null); setArticle(null); }}><ChevronLeft className="h-4 w-4" /> Back</Button>
+          {loading || !article ? (
+            <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <article>
+              {article.category && <div className="text-xs font-medium uppercase tracking-wide text-primary">{article.category}</div>}
+              <h2 className="mt-1 text-xl font-bold">{article.title}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">{article.author.name} · updated {fmtDate(article.updatedAt)}</p>
+              <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed">{article.body}</div>
+            </article>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the knowledge base…" className="h-10 w-full rounded-lg border bg-card px-4 text-sm outline-none focus:border-primary" />
+      {filtered.length === 0 ? (
+        <Card className="shadow-sm"><CardContent className="py-10"><Empty>{articles.length === 0 ? "No articles yet. Your admin will add docs and SOPs here." : "No matches."}</Empty></CardContent></Card>
+      ) : (
+        Object.entries(groups).map(([cat, items]) => (
+          <div key={cat}>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{cat}</h3>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {items.map((a) => (
+                <button key={a.id} onClick={() => open(a.id)} className="flex items-start gap-3 rounded-xl border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-sm">
+                  <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <div className="font-medium">{a.title}</div>
+                    <div className="text-xs text-muted-foreground">{a.author} · {fmtDate(a.updatedAt)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Personal reports
+// ---------------------------------------------------------------
+
+function ReportsTab({ data }: { data: Data }) {
+  // Hours per day for the last 14 days, from attendance check-in/out.
+  const days: { label: string; hours: number }[] = [];
+  const attMap = new Map<string, { checkIn: string | null; checkOut: string | null }>();
+  for (const a of data.recentAttendance) attMap.set(a.date.slice(0, 10), { checkIn: a.checkIn, checkOut: a.checkOut });
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const rec = attMap.get(key);
+    let hours = 0;
+    if (rec?.checkIn && rec.checkOut) hours = Math.max(0, (new Date(rec.checkOut).getTime() - new Date(rec.checkIn).getTime()) / 3_600_000);
+    days.push({ label: d.toLocaleDateString("en-IN", { day: "2-digit" }), hours: Math.round(hours * 10) / 10 });
+  }
+  const maxH = Math.max(1, ...days.map((d) => d.hours));
+  const totalDone = data.tasks.filter((t) => t.status === "DONE").length;
+  const totalTasks = data.tasks.length;
+  const tsTotal = data.timesheet.reduce((s, e) => s + e.hours, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <MetricCard icon={<Clock className="h-4 w-4" />} tone="primary" label="Attendance" value={data.performance.attendanceRate != null ? `${data.performance.attendanceRate}%` : "—"} hint="last 60 days" />
+        <MetricCard icon={<CheckCircle2 className="h-4 w-4" />} tone="emerald" label="Tasks done" value={`${totalDone}/${totalTasks}`} />
+        <MetricCard icon={<Timer className="h-4 w-4" />} tone="amber" label="Logged hrs" value={`${Math.round(tsTotal * 10) / 10}h`} hint="last 21 days" />
+        <MetricCard icon={<Star className="h-4 w-4" />} tone="primary" label="Avg review" value={data.performance.avgRating ? `${data.performance.avgRating.toFixed(1)}★` : "—"} />
+      </div>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3"><CardTitle className="text-base">Hours worked · last 14 days</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex h-40 items-end gap-1.5">
+            {days.map((d, i) => (
+              <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                <div className="flex w-full flex-1 items-end">
+                  <div className="w-full rounded-t bg-primary/70 transition-all hover:bg-primary" style={{ height: `${(d.hours / maxH) * 100}%` }} title={`${d.hours}h`} />
+                </div>
+                <span className="text-[9px] text-muted-foreground">{d.label}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

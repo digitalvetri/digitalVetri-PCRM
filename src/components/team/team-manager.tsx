@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Briefcase, Check, Clock, Loader2, Megaphone, Plane, Plus, UserCheck, UserPlus, Users, X } from "lucide-react";
+import { AlertTriangle, BookOpen, Briefcase, CalendarDays, Check, Clock, Loader2, Megaphone, Plane, Plus, UserCheck, UserPlus, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -99,6 +99,18 @@ interface AnnouncementRow {
   author: string;
   createdAt: string;
 }
+interface ArticleRow {
+  id: string;
+  title: string;
+  category: string | null;
+  author: string;
+  updatedAt: string;
+}
+interface HolidayRow {
+  id: string;
+  date: string;
+  name: string;
+}
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
@@ -118,7 +130,7 @@ const STATUS_TONE: Record<string, string> = {
   ON_HOLD: "border-amber-500/40 text-amber-600",
 };
 
-export function TeamManager({ employees, projects, leaves, dashboard, tracking, announcements }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking; announcements: AnnouncementRow[] }) {
+export function TeamManager({ employees, projects, leaves, dashboard, tracking, announcements, articles, holidays }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking; announcements: AnnouncementRow[]; articles: ArticleRow[]; holidays: HolidayRow[] }) {
   const pendingLeave = leaves.filter((l) => l.status === "PENDING").length;
   return (
     <Tabs defaultValue="overview" className="animate-fade-in">
@@ -128,6 +140,7 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking, 
         <TabsTrigger value="employees">Employees ({employees.length})</TabsTrigger>
         <TabsTrigger value="projects">Projects ({projects.length})</TabsTrigger>
         <TabsTrigger value="leave">Leave{pendingLeave ? ` (${pendingLeave})` : ""}</TabsTrigger>
+        <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
         <TabsTrigger value="chat">Chat</TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className="mt-4">
@@ -143,7 +156,10 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking, 
         <ProjectsTab projects={projects} employees={employees} />
       </TabsContent>
       <TabsContent value="leave" className="mt-4">
-        <LeaveTab leaves={leaves} />
+        <LeaveTab leaves={leaves} holidays={holidays} />
+      </TabsContent>
+      <TabsContent value="knowledge" className="mt-4">
+        <KnowledgeAdminTab articles={articles} />
       </TabsContent>
       <TabsContent value="chat" className="mt-4">
         <p className="mb-3 text-sm text-muted-foreground">Company-wide channel — visible to you and every employee.</p>
@@ -884,14 +900,142 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
 // Leave
 // ---------------------------------------------------------------
 
-function LeaveTab({ leaves }: { leaves: LeaveRow[] }) {
+function LeaveTab({ leaves, holidays }: { leaves: LeaveRow[]; holidays: HolidayRow[] }) {
   const router = useRouter();
-  if (leaves.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">No leave requests.</p>;
   return (
-    <div className="space-y-2">
-      {leaves.map((l) => (
-        <LeaveItem key={l.id} leave={l} onDone={() => router.refresh()} />
-      ))}
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Leave requests</CardTitle></CardHeader>
+        <CardContent>
+          {leaves.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">No leave requests.</p>
+          ) : (
+            <div className="space-y-2">
+              {leaves.map((l) => <LeaveItem key={l.id} leave={l} onDone={() => router.refresh()} />)}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <HolidaysManager holidays={holidays} />
+    </div>
+  );
+}
+
+function HolidaysManager({ holidays }: { holidays: HolidayRow[] }) {
+  const router = useRouter();
+  const [date, setDate] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!date || !name.trim()) return toast.error("Pick a date and name");
+    setBusy(true);
+    try {
+      await post("/api/holidays", { date, name });
+      setDate(""); setName("");
+      toast.success("Holiday added");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(id: string) {
+    try { await post(`/api/holidays/${id}`, {}, "DELETE"); router.refresh(); } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4 text-violet-500" /> Company holidays</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <form onSubmit={add} className="flex flex-wrap items-center gap-2">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Holiday name" className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm" />
+          <Button type="submit" size="sm" disabled={busy || !date || !name.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add</Button>
+        </form>
+        {holidays.length === 0 ? (
+          <p className="py-2 text-center text-sm text-muted-foreground">No holidays set for this year.</p>
+        ) : (
+          <ul className="divide-y">
+            {holidays.map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span><span className="font-medium">{h.name}</span> · <span className="text-muted-foreground">{fmtDate(h.date)}</span></span>
+                <button onClick={() => remove(h.id)} aria-label="Delete" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"><X className="h-3.5 w-3.5" /></button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function KnowledgeAdminTab({ articles }: { articles: ArticleRow[] }) {
+  const router = useRouter();
+  const [title, setTitle] = React.useState("");
+  const [category, setCategory] = React.useState("");
+  const [body, setBody] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim() || !body.trim()) return toast.error("Add a title and content");
+    setBusy(true);
+    try {
+      await post("/api/kb", { title, body, category: category || undefined });
+      setTitle(""); setCategory(""); setBody("");
+      toast.success("Article published");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(id: string) {
+    try { await post(`/api/kb/${id}`, {}, "DELETE"); router.refresh(); } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><BookOpen className="h-4 w-4 text-primary" /> Write an article</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={add} className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Article title" className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm" />
+              <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category (optional)" className="h-9 w-48 rounded-md border bg-background px-3 text-sm" />
+            </div>
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write the doc / SOP / how-to…" rows={6} className="w-full rounded-md border bg-background px-3 py-2 text-sm" />
+            <div className="flex justify-end">
+              <Button type="submit" size="sm" disabled={busy || !title.trim() || !body.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Publish</Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Articles ({articles.length})</CardTitle></CardHeader>
+        <CardContent>
+          {articles.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">No articles yet.</p>
+          ) : (
+            <ul className="divide-y">
+              {articles.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-medium">{a.title}</span>
+                    {a.category && <span className="ml-2 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{a.category}</span>}
+                    <div className="text-xs text-muted-foreground">{a.author} · {fmtDate(a.updatedAt)}</div>
+                  </div>
+                  <button onClick={() => remove(a.id)} aria-label="Delete" className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"><X className="h-3.5 w-3.5" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
