@@ -19,6 +19,7 @@ import {
   LogIn,
   LogOut,
   Loader2,
+  MessageSquare,
   Plane,
   Plus,
   RotateCcw,
@@ -32,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { TeamChat } from "@/components/chat/team-chat";
 import { formatINR, cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------
@@ -84,7 +86,7 @@ const QUOTES = [
   "Done is better than perfect — then make it better.",
 ];
 
-type TabKey = "dashboard" | "tasks" | "attendance" | "projects" | "leave" | "payslips" | "reviews";
+type TabKey = "dashboard" | "tasks" | "attendance" | "projects" | "leave" | "payslips" | "reviews" | "chat";
 
 export function EmployeePortal({ name, data }: { name: string; data: Data }) {
   const router = useRouter();
@@ -139,6 +141,7 @@ export function EmployeePortal({ name, data }: { name: string; data: Data }) {
     { key: "tasks", label: "My Tasks", icon: <ListChecks className="h-4 w-4" />, badge: openCount || undefined },
     { key: "attendance", label: "Attendance", icon: <CalendarDays className="h-4 w-4" /> },
     { key: "projects", label: "Projects", icon: <Briefcase className="h-4 w-4" />, badge: data.assignments.length || undefined },
+    { key: "chat", label: "Team Chat", icon: <MessageSquare className="h-4 w-4" /> },
     { key: "leave", label: "Leave", icon: <Plane className="h-4 w-4" />, badge: pendingLeave || undefined },
     { key: "payslips", label: "Payslips", icon: <Wallet className="h-4 w-4" /> },
     { key: "reviews", label: "Reviews", icon: <Star className="h-4 w-4" /> },
@@ -207,6 +210,13 @@ export function EmployeePortal({ name, data }: { name: string; data: Data }) {
           <>
             <PageTitle icon={<Briefcase className="h-5 w-5" />} title="Projects" subtitle="What you're assigned to." />
             <ProjectsGrid assignments={data.assignments} />
+          </>
+        )}
+
+        {tab === "chat" && (
+          <>
+            <PageTitle icon={<MessageSquare className="h-5 w-5" />} title="Team Chat" subtitle="One shared channel for the whole team." />
+            <TeamChat />
           </>
         )}
 
@@ -375,9 +385,9 @@ function DashboardTab({
             <CardContent>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <QuickAction icon={<ListChecks className="h-5 w-5" />} label="My tasks" onClick={() => onGoTo("tasks")} />
+                <QuickAction icon={<MessageSquare className="h-5 w-5" />} label="Team chat" onClick={() => onGoTo("chat")} />
                 <QuickAction icon={<Plane className="h-5 w-5" />} label="Request leave" onClick={() => onGoTo("leave")} />
                 <QuickAction icon={<Wallet className="h-5 w-5" />} label="Payslips" onClick={() => onGoTo("payslips")} />
-                <QuickAction icon={<Briefcase className="h-5 w-5" />} label="Projects" onClick={() => onGoTo("projects")} />
               </div>
             </CardContent>
           </Card>

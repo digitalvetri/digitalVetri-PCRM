@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { TeamChat } from "@/components/chat/team-chat";
 import { formatINR, cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------
@@ -119,6 +120,7 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking }
         <TabsTrigger value="employees">Employees ({employees.length})</TabsTrigger>
         <TabsTrigger value="projects">Projects ({projects.length})</TabsTrigger>
         <TabsTrigger value="leave">Leave{pendingLeave ? ` (${pendingLeave})` : ""}</TabsTrigger>
+        <TabsTrigger value="chat">Chat</TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className="mt-4">
         <OverviewTab dashboard={dashboard} />
@@ -134,6 +136,10 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking }
       </TabsContent>
       <TabsContent value="leave" className="mt-4">
         <LeaveTab leaves={leaves} />
+      </TabsContent>
+      <TabsContent value="chat" className="mt-4">
+        <p className="mb-3 text-sm text-muted-foreground">Company-wide channel — visible to you and every employee.</p>
+        <TeamChat height="h-[60vh]" />
       </TabsContent>
     </Tabs>
   );
