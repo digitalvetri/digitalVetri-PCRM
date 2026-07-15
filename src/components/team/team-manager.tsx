@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Briefcase, Check, Clock, Loader2, Plane, Plus, UserCheck, UserPlus, Users, X } from "lucide-react";
+import { AlertTriangle, Briefcase, Check, Clock, Loader2, Megaphone, Plane, Plus, UserCheck, UserPlus, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,6 +91,14 @@ interface Tracking {
   dayKeys: string[];
   rows: TrackingRow[];
 }
+interface AnnouncementRow {
+  id: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  author: string;
+  createdAt: string;
+}
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
@@ -110,7 +118,7 @@ const STATUS_TONE: Record<string, string> = {
   ON_HOLD: "border-amber-500/40 text-amber-600",
 };
 
-export function TeamManager({ employees, projects, leaves, dashboard, tracking }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking }) {
+export function TeamManager({ employees, projects, leaves, dashboard, tracking, announcements }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking; announcements: AnnouncementRow[] }) {
   const pendingLeave = leaves.filter((l) => l.status === "PENDING").length;
   return (
     <Tabs defaultValue="overview" className="animate-fade-in">
@@ -123,7 +131,7 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking }
         <TabsTrigger value="chat">Chat</TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className="mt-4">
-        <OverviewTab dashboard={dashboard} />
+        <OverviewTab dashboard={dashboard} announcements={announcements} />
       </TabsContent>
       <TabsContent value="tracking" className="mt-4">
         <TrackingTab tracking={tracking} />
@@ -158,7 +166,7 @@ const DASH_STATUS: Record<DashboardRow["status"], { label: string; cls: string; 
   ABSENT: { label: "Absent", cls: "text-muted-foreground border-border", dot: "bg-muted-foreground/40" },
 };
 
-function OverviewTab({ dashboard: d }: { dashboard: Dashboard }) {
+function OverviewTab({ dashboard: d, announcements }: { dashboard: Dashboard; announcements: AnnouncementRow[] }) {
   const present = d.rows.filter((r) => r.status === "PRESENT");
   const checkedOut = d.rows.filter((r) => r.status === "CHECKED_OUT");
   const leave = d.rows.filter((r) => r.status === "LEAVE");
@@ -250,7 +258,82 @@ function OverviewTab({ dashboard: d }: { dashboard: Dashboard }) {
           </table>
         </CardContent>
       </Card>
+
+      {/* Announcements */}
+      <AnnouncementsPanel announcements={announcements} />
     </div>
+  );
+}
+
+function AnnouncementsPanel({ announcements }: { announcements: AnnouncementRow[] }) {
+  const router = useRouter();
+  const [title, setTitle] = React.useState("");
+  const [body, setBody] = React.useState("");
+  const [pinned, setPinned] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim() || !body.trim()) return toast.error("Add a title and message");
+    setBusy(true);
+    try {
+      await post("/api/announcements", { title, body, pinned });
+      setTitle("");
+      setBody("");
+      setPinned(false);
+      toast.success("Announcement posted");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    try {
+      await post(`/api/announcements/${id}`, {}, "DELETE");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base"><Megaphone className="h-4 w-4 text-primary" /> Announcements</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={submit} className="space-y-2 rounded-xl border bg-muted/20 p-3">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Announcement title" maxLength={160} className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" />
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Share an update with the whole team…" maxLength={4000} rows={3} className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} /> Pin to top</label>
+            <Button type="submit" size="sm" disabled={busy || !title.trim() || !body.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Post</Button>
+          </div>
+        </form>
+        {announcements.length === 0 ? (
+          <p className="py-2 text-center text-sm text-muted-foreground">No announcements yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {announcements.map((a) => (
+              <li key={a.id} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    {a.pinned && <Badge variant="outline" className="border-primary/40 text-[10px] text-primary">Pinned</Badge>}
+                    <span className="font-medium">{a.title}</span>
+                  </div>
+                  <button onClick={() => remove(a.id)} aria-label="Delete" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"><X className="h-3.5 w-3.5" /></button>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{a.body}</p>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">{a.author} · {fmtDate(a.createdAt)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

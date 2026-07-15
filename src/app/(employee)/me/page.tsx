@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/rbac";
 import { getEmployeeSelf, getEmployeePerformance } from "@/lib/hr";
+import { listAnnouncements } from "@/lib/announcements";
 import { EmployeePortal } from "@/components/employee/employee-portal";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +10,10 @@ export default async function MePage() {
   const user = await getCurrentUser();
   if (!user) return null; // layout already redirects; satisfies types
 
-  const [self, performance] = await Promise.all([
+  const [self, performance, announcements] = await Promise.all([
     getEmployeeSelf(user.id),
     getEmployeePerformance(user.id),
+    listAnnouncements(10),
   ]);
 
   const data = {
@@ -83,6 +85,14 @@ export default async function MePage() {
       status: t.status,
       priority: t.priority,
       dueDate: t.dueDate?.toISOString() ?? null,
+    })),
+    announcements: announcements.map((a) => ({
+      id: a.id,
+      title: a.title,
+      body: a.body,
+      pinned: a.pinned,
+      author: a.author.name,
+      createdAt: a.createdAt.toISOString(),
     })),
     performance,
   };

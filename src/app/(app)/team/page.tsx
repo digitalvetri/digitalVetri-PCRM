@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, roleCan } from "@/lib/rbac";
 import { listEmployees, listProjects, listLeaveRequests, getAdminDashboard, getTrackingReport } from "@/lib/hr";
+import { listAnnouncements } from "@/lib/announcements";
 import { PageHeader } from "@/components/shared/page-header";
 import { TeamManager } from "@/components/team/team-manager";
 
@@ -12,13 +13,23 @@ export default async function TeamPage() {
   if (!user) redirect("/sign-in");
   if (!roleCan(user.role, "hr.manage")) redirect("/");
 
-  const [employees, projects, leaves, dashboard, tracking] = await Promise.all([
+  const [employees, projects, leaves, dashboard, tracking, announcements] = await Promise.all([
     listEmployees(),
     listProjects(),
     listLeaveRequests(),
     getAdminDashboard(),
     getTrackingReport(7),
+    listAnnouncements(20),
   ]);
+
+  const announcementRows = announcements.map((a) => ({
+    id: a.id,
+    title: a.title,
+    body: a.body,
+    pinned: a.pinned,
+    author: a.author.name,
+    createdAt: a.createdAt.toISOString(),
+  }));
 
   const employeeRows = employees.map((e) => ({
     id: e.id,
@@ -56,7 +67,7 @@ export default async function TeamPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Team" description="Create logins, assign projects, approve leave, manage salary and reviews. Employees sign in to their own private workspace." />
-      <TeamManager employees={employeeRows} projects={projectRows} leaves={leaveRows} dashboard={dashboard} tracking={tracking} />
+      <TeamManager employees={employeeRows} projects={projectRows} leaves={leaveRows} dashboard={dashboard} tracking={tracking} announcements={announcementRows} />
     </div>
   );
 }

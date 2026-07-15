@@ -52,6 +52,7 @@ model User {
   performanceReviews  PerformanceReview[] @relation("EmployeeReviews")
   authoredReviews     PerformanceReview[] @relation("ReviewAuthor")
   chatMessages        ChatMessage[]
+  announcements       Announcement[]
 
   @@index([clerkId])
   @@index([role])
@@ -65,6 +66,20 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+
+/// Company announcements posted by admins, visible to everyone.
+model Announcement {
+  id        String   @id @default(cuid())
+  authorId  String
+  title     String
+  body      String
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
 }

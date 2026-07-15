@@ -60,6 +60,7 @@ interface Data {
   salary: { id: string; month: string; baseSalary: number; allowances: number; deductions: number; netPay: number; status: string; paidAt: string | null }[];
   reviews: { id: string; period: string; rating: number; strengths: string | null; improvements: string | null; comments: string | null; createdAt: string }[];
   tasks: TaskItem[];
+  announcements: { id: string; title: string; body: string; pinned: boolean; author: string; createdAt: string }[];
   performance: { attendanceRate: number | null; avgRating: number | null; projectCount: number; score: number; reviewCount: number };
 }
 
@@ -366,6 +367,32 @@ function NotificationsBell({ items }: { items: { label: string; onClick: () => v
 }
 
 // ---------------------------------------------------------------
+// Announcements
+// ---------------------------------------------------------------
+
+function AnnouncementsCard({ items }: { items: Data["announcements"] }) {
+  return (
+    <Card className="border-primary/20 bg-primary/[0.03] shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base"><span className="text-primary"><Bell className="h-4 w-4" /></span> Announcements</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items.slice(0, 4).map((a) => (
+          <div key={a.id} className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2">
+              {a.pinned && <Badge variant="outline" className="border-primary/40 text-[10px] text-primary">Pinned</Badge>}
+              <span className="font-medium">{a.title}</span>
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{a.body}</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">{a.author} · {fmtDate(a.createdAt)}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------
 // Dashboard tab
 // ---------------------------------------------------------------
 
@@ -469,6 +496,9 @@ function DashboardTab({
           hint={`${month.present} present · ${month.leave} leave`}
         />
       </div>
+
+      {/* Announcements */}
+      {data.announcements.length > 0 && <AnnouncementsCard items={data.announcements} />}
 
       {/* Two-column: schedule + calendar */}
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
