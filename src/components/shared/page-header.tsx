@@ -13,9 +13,12 @@ export function PageHeader({
 }) {
   return (
     <div className={cn("mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between", className)}>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      <div className="flex items-center gap-3">
+        <span aria-hidden className="hidden h-9 w-1.5 rounded-full bg-gradient-to-b from-primary to-blue-500 sm:block" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        </div>
       </div>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>

@@ -112,13 +112,14 @@ export function Sidebar({
             href={item.href}
             onClick={onClose}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
+              "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200",
               active
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground hover:bg-white/5 hover:text-white"
+                ? "bg-gradient-to-r from-primary to-blue-600 text-white shadow-lg shadow-primary/25"
+                : "text-sidebar-foreground hover:bg-white/[0.06] hover:text-white"
             )}
           >
-            <item.icon className="h-4 w-4 shrink-0" />
+            {active && <span className="absolute -left-3 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-white" />}
+            <item.icon className={cn("h-4 w-4 shrink-0 transition-transform duration-200", !active && "group-hover:scale-110")} />
             <span className="truncate">{item.label}</span>
           </Link>
         );

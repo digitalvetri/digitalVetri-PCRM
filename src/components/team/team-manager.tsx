@@ -354,13 +354,16 @@ function AnnouncementsPanel({ announcements }: { announcements: AnnouncementRow[
 }
 
 function KpiCard({ icon, label, value, hint, tone }: { icon: React.ReactNode; label: string; value: string; hint?: string; tone?: "amber" | "emerald" | "primary" }) {
-  const toneCls = tone === "amber" ? "bg-amber-500/10 text-amber-600" : tone === "emerald" ? "bg-emerald-500/10 text-emerald-600" : "bg-primary/10 text-primary";
+  const iconCls =
+    tone === "amber" ? "bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/30" :
+    tone === "emerald" ? "bg-gradient-to-br from-emerald-400 to-teal-500 shadow-emerald-500/30" :
+    "bg-gradient-to-br from-primary to-blue-500 shadow-primary/30";
   return (
-    <Card className="shadow-sm">
+    <Card className="shadow-card transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-lg">
       <CardContent className="p-4">
-        <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", toneCls)}>{icon}</span>
+        <span className={cn("flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-lg", iconCls)}>{icon}</span>
         <div className="mt-3 text-2xl font-bold tabular-nums leading-none">{value}</div>
-        <div className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
         {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
