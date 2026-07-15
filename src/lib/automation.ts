@@ -13,6 +13,7 @@ import { notifyInstant } from "@/lib/notify";
 import { istEndOfDay } from "@/lib/time";
 import { recomputeProspectNextFollowUp } from "@/lib/follow-up-sync";
 import { computeCeoBriefing, storeCeoBriefing } from "@/lib/ceo-briefing";
+import { getVetriHrContext } from "@/lib/hr";
 import { postSystemMessage } from "@/lib/chat";
 import { DEPARTMENT_LIST, runDepartmentShift } from "@/lib/ai/departments";
 
@@ -332,6 +333,24 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
     }
   } catch (err) {
     console.error("[agent] CEO briefing refresh failed", err);
+  }
+
+  // Phase 4: proactive daily team standup — Vetri posts the day's team status
+  // and flags anyone who needs the founder's attention, straight to Team Chat.
+  try {
+    const hr = await getVetriHrContext();
+    if (hr.headcount > 0) {
+      const parts = [
+        `👥 Vetri — Team status (${hr.date})`,
+        `${hr.presentToday}/${hr.headcount} present · ${hr.onLeaveToday} on leave · ${hr.absentToday} absent`,
+        `${hr.openTasks} open task${hr.openTasks === 1 ? "" : "s"}${hr.overdueTasks ? `, ${hr.overdueTasks} overdue` : ""} · ${hr.pendingLeaveApprovals + hr.pendingTimesheetApprovals} awaiting approval`,
+      ];
+      if (hr.risks.length) parts.push("⚠️ Needs attention: " + hr.risks.map((r) => `${r.name} (${r.reason})`).join("; "));
+      await postSystemMessage(parts.join("\n"));
+      notes.push("Vetri posted the daily team status to Team Chat.");
+    }
+  } catch (err) {
+    console.error("[agent] team standup post failed", err);
   }
 
   const digest = await buildDigest(leadsFound);

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crown, X, Send, Loader2, ArrowRight, Mic, Volume2, VolumeX, RefreshCw, Ear, EarOff, Hand } from "lucide-react";
+import { Crown, X, Send, Loader2, ArrowRight, Mic, Volume2, VolumeX, RefreshCw, Ear, EarOff, Hand, MessagesSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useRole } from "@/components/layout/app-shell";
@@ -79,6 +79,7 @@ const SUGGESTIONS = [
 const VOICE_KEY = "dv-ceo-voice";
 const WAKE_KEY = "dv-vetri-wake";
 const CLAP_KEY = "dv-vetri-clap";
+const CONVO_KEY = "dv-vetri-convo";
 const LANG_KEY = "dv-vetri-lang";
 type Lang = "en" | "ta";
 // The names the assistant answers to (spoken), incl. the Tamil word வெற்றி.
@@ -170,6 +171,11 @@ export function AiAssistant() {
   // Wake word — "Vetri" always-listening (opt-in).
   const [wakeOn, setWakeOn] = React.useState(false);
   const [clapOn, setClapOn] = React.useState(false);
+  // Conversation Mode — after Vetri answers it keeps listening for your next
+  // question (no need to say "Vetri" each turn). Desktop-only, opt-in.
+  const [convoOn, setConvoOn] = React.useState(false);
+  const convoRef = React.useRef(false);
+  const [interim, setInterim] = React.useState(""); // live caption of what you're saying
   const [lang, setLang] = React.useState<Lang>("en");
   const langRef = React.useRef<Lang>("en");
   const [armed, setArmed] = React.useState(false); // heard "Vetri" / clap, capturing the question
@@ -209,6 +215,9 @@ export function AiAssistant() {
         // can trigger Vetri by speaking or clapping from any module.
         setWakeOn(localStorage.getItem(WAKE_KEY) !== "0");
         setClapOn(localStorage.getItem(CLAP_KEY) !== "0");
+        const convo = localStorage.getItem(CONVO_KEY) === "1";
+        setConvoOn(convo);
+        convoRef.current = convo;
       }
       const storedLang = localStorage.getItem(LANG_KEY);
       // Default English so English commands ("open calendar") are recognised;
@@ -230,6 +239,7 @@ export function AiAssistant() {
   const disarm = React.useCallback(() => {
     armedRef.current = false;
     setArmed(false);
+    setInterim("");
     questionBufRef.current = "";
     if (silenceRef.current) clearTimeout(silenceRef.current);
     if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
@@ -278,8 +288,10 @@ export function AiAssistant() {
       }
       if (finalText) {
         questionBufRef.current = (questionBufRef.current + " " + finalText).trim();
+        setInterim(questionBufRef.current);
         finalizeSoon();
       } else if (interim) {
+        setInterim((questionBufRef.current + " " + interim).trim());
         finalizeSoon();
       }
     };
@@ -356,8 +368,10 @@ export function AiAssistant() {
         }
         if (finalText) {
           questionBufRef.current = (questionBufRef.current + " " + stripWakeWord(finalText)).trim();
+          setInterim(questionBufRef.current);
           finalizeSoon();
         } else if (interim) {
+          setInterim((questionBufRef.current + " " + stripWakeWord(interim)).trim());
           finalizeSoon();
         }
       };
@@ -592,6 +606,30 @@ export function AiAssistant() {
     });
   }
 
+  function toggleConvo() {
+    if (!voiceInSupported) return;
+    if (isMobileDevice()) {
+      toast.error("Conversation Mode needs a desktop browser.");
+      return;
+    }
+    setConvoOn((v) => {
+      const next = !v;
+      convoRef.current = next;
+      try {
+        localStorage.setItem(CONVO_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      if (next) {
+        toast.success("Conversation Mode on — Vetri keeps listening after each reply.");
+        arm("");
+      } else {
+        disarm();
+      }
+      return next;
+    });
+  }
+
   function toggleClap() {
     setClapOn((v) => {
       const next = !v;
@@ -627,13 +665,23 @@ export function AiAssistant() {
     else arm("");
   }
 
-  function sayOut(text: string, force = false) {
-    if (!(voiceOn || force)) return;
+  function sayOut(text: string, force = false, listenAfter = false) {
+    if (!(voiceOn || force)) {
+      // Voice muted but in Conversation Mode → still re-open the mic for the next turn.
+      if (listenAfter && convoRef.current && !isMobileDevice()) setTimeout(() => arm(""), 250);
+      return;
+    }
     // Only bridge the short gap before the audio starts — isSpeaking() covers the
     // actual playback, so Vetri starts listening again the moment it stops talking
     // (fixes "I call it 5 times and it wakes once" — it was staying deaf too long).
     ignoreUntilRef.current = Date.now() + 1200;
-    void speakSmart(text, lang);
+    void speakSmart(text, lang).finally(() => {
+      // Conversation Mode: the moment Vetri stops talking, listen for the reply —
+      // a natural back-and-forth without repeating the wake word each turn.
+      if (listenAfter && convoRef.current && !isMobileDevice() && !armedRef.current) {
+        setTimeout(() => arm(""), 300);
+      }
+    });
   }
 
   // --- Guided client onboarding conversation ---
@@ -742,12 +790,12 @@ export function AiAssistant() {
       }
       if (res.ok && d.kind === "clarify") {
         setMessages((m) => [...m, { role: "assistant", content: d.say }]);
-        sayOut(d.say, forceSpeak);
+        sayOut(d.say, forceSpeak, true);
         return;
       }
       const content = d.answer ?? d.error ?? "Sorry, something went wrong.";
       setMessages((m) => [...m, { role: "assistant", content, action: d.action }]);
-      sayOut(content, forceSpeak);
+      sayOut(content, forceSpeak, true);
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Network error. Please try again." }]);
     } finally {
@@ -774,7 +822,7 @@ export function AiAssistant() {
         ...m,
         { role: "assistant", content: data.say, action: data.href ? { type: "navigate", href: data.href, label: data.label } : undefined },
       ]);
-      sayOut(data.say);
+      sayOut(data.say, false, true);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't save");
@@ -807,11 +855,16 @@ export function AiAssistant() {
               <Crown className="h-5 w-5" />
               <div className="flex-1">
                 <div className="text-sm font-semibold">Your AI CEO</div>
-                <div className="flex items-center gap-1 text-[11px] text-blue-100">
+                <div className="flex items-center gap-1 truncate text-[11px] text-blue-100">
                   {armed ? (
                     <>
-                      <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" /> Listening…
+                      <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-red-400" />
+                      <span className="truncate">{interim ? `“${interim}”` : loading ? "Thinking…" : "Listening…"}</span>
                     </>
+                  ) : loading ? (
+                    "Thinking…"
+                  ) : convoOn ? (
+                    "Conversation Mode — just talk"
                   ) : wakeOn ? (
                     "Say “Vetri” anytime"
                   ) : clapOn ? (
@@ -868,6 +921,20 @@ export function AiAssistant() {
               >
                 <Hand className="h-4 w-4" />
               </button>
+              {voiceInSupported && (
+                <button
+                  onClick={toggleConvo}
+                  title={convoOn ? "Conversation Mode on — Vetri keeps listening" : "Enable Conversation Mode (continuous talk)"}
+                  aria-label={convoOn ? "Disable Conversation Mode" : "Enable Conversation Mode"}
+                  aria-pressed={convoOn}
+                  className={cn(
+                    "rounded-md p-1.5 text-blue-100 transition-colors hover:bg-white/10 hover:text-white",
+                    convoOn && "bg-white/15 text-white"
+                  )}
+                >
+                  <MessagesSquare className="h-4 w-4" />
+                </button>
+              )}
               <button
                 onClick={toggleLang}
                 title={lang === "ta" ? "Vetri speaks Tamil — tap for English" : "Vetri speaks English — tap for Tamil"}
