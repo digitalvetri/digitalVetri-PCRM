@@ -87,5 +87,5 @@ export default async function MePage() {
     performance,
   };
 
-  return <EmployeePortal name={user.name} data={data} />;
+  return <EmployeePortal name={user.name} email={user.email} data={data} />;
 }

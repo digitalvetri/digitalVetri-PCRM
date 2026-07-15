@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { UserButton } from "@clerk/nextjs";
 import { toast } from "sonner";
 import {
+  Bell,
   Briefcase,
   CalendarDays,
   CheckCircle2,
@@ -19,6 +21,7 @@ import {
   LogIn,
   LogOut,
   Loader2,
+  Menu,
   MessageSquare,
   Plane,
   Plus,
@@ -28,11 +31,13 @@ import {
   Sun,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Logo } from "@/components/shared/logo";
 import { TeamChat } from "@/components/chat/team-chat";
 import { formatINR, cn } from "@/lib/utils";
 
@@ -88,10 +93,11 @@ const QUOTES = [
 
 type TabKey = "dashboard" | "tasks" | "attendance" | "projects" | "leave" | "payslips" | "reviews" | "chat";
 
-export function EmployeePortal({ name, data }: { name: string; data: Data }) {
+export function EmployeePortal({ name, email, data }: { name: string; email: string; data: Data }) {
   const router = useRouter();
   const [tab, setTab] = React.useState<TabKey>("dashboard");
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const first = name.split(" ")[0];
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -147,32 +153,87 @@ export function EmployeePortal({ name, data }: { name: string; data: Data }) {
     { key: "reviews", label: "Reviews", icon: <Star className="h-4 w-4" /> },
   ];
 
+  const activeItem = nav.find((n) => n.key === tab);
+  const overdueCount = data.tasks.filter((t) => t.status !== "DONE" && isPast(t.dueDate)).length;
+  const attention: { label: string; onClick: () => void }[] = [];
+  if (overdueCount > 0) attention.push({ label: `${overdueCount} overdue task${overdueCount > 1 ? "s" : ""}`, onClick: () => setTab("tasks") });
+  if (!checkedIn) attention.push({ label: "You haven't checked in today", onClick: () => setTab("dashboard") });
+  if (pendingLeave > 0) attention.push({ label: `${pendingLeave} leave request pending`, onClick: () => setTab("leave") });
+
+  const navList = (
+    <nav className="flex flex-col gap-0.5 px-3">
+      {nav.map((n) => {
+        const active = tab === n.key;
+        return (
+          <button
+            key={n.key}
+            onClick={() => { setTab(n.key); setSidebarOpen(false); }}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
+              active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-white/5 hover:text-white",
+            )}
+          >
+            <span className="shrink-0">{n.icon}</span>
+            <span className="truncate">{n.label}</span>
+            {n.badge ? (
+              <span className={cn("ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold", active ? "bg-white/20 text-white" : "bg-white/10 text-sidebar-foreground")}>{n.badge}</span>
+            ) : null}
+          </button>
+        );
+      })}
+    </nav>
+  );
+
   return (
-    <div className="animate-fade-in lg:grid lg:grid-cols-[220px_1fr] lg:gap-6">
-      {/* Left workspace nav */}
-      <aside className="mb-4 lg:mb-0">
-        <nav className="flex gap-1 overflow-x-auto rounded-xl border bg-card p-1.5 lg:sticky lg:top-20 lg:flex-col lg:overflow-visible">
-          {nav.map((n) => (
-            <button
-              key={n.key}
-              onClick={() => setTab(n.key)}
-              className={cn(
-                "flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:w-full",
-                tab === n.key ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              <span className={cn(tab === n.key ? "" : "text-muted-foreground")}>{n.icon}</span>
-              <span className="whitespace-nowrap">{n.label}</span>
-              {n.badge ? (
-                <span className={cn("ml-auto hidden rounded-full px-1.5 py-0.5 text-[10px] font-semibold lg:inline-block", tab === n.key ? "bg-white/20" : "bg-primary/10 text-primary")}>{n.badge}</span>
-              ) : null}
-            </button>
-          ))}
-        </nav>
+    <div className="flex min-h-screen">
+      {/* Desktop sidebar */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
+        <div className="flex h-16 items-center border-b border-sidebar-border/60 px-5 text-white">
+          <Logo tileSize={32} subtitle="Employee" />
+        </div>
+        <div className="flex-1 overflow-y-auto py-3">{navList}</div>
+        <div className="border-t border-sidebar-border/60 px-4 py-3 text-xs text-sidebar-foreground">
+          <div className="truncate font-medium text-white">{name}</div>
+          <div className="truncate">{data.profile?.designation ?? "Team member"}</div>
+        </div>
       </aside>
 
-      {/* Content */}
-      <div className="min-w-0 space-y-5">
+      {/* Mobile drawer */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
+          <aside role="dialog" aria-modal="true" aria-label="Navigation" className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar animate-in slide-in-from-left duration-200">
+            <div className="flex h-16 items-center justify-between border-b border-sidebar-border/60 px-5 text-white">
+              <Logo tileSize={30} subtitle="Employee" />
+              <button onClick={() => setSidebarOpen(false)} aria-label="Close menu" className="rounded-md p-1 text-sidebar-foreground transition-colors hover:bg-white/10 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-3">{navList}</div>
+          </aside>
+        </div>
+      )}
+
+      {/* Main column */}
+      <div className="flex min-h-screen flex-1 flex-col lg:pl-60">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b bg-card/80 px-4 backdrop-blur sm:px-6">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="-ml-1 rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted lg:hidden"><Menu className="h-5 w-5" /></button>
+            <div>
+              <h1 className="text-base font-semibold leading-tight">{activeItem?.label}</h1>
+              <p className="hidden text-xs text-muted-foreground sm:block">{greeting}, {first}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <NotificationsBell items={attention} />
+            <div className="hidden text-right sm:block">
+              <div className="text-sm font-medium leading-none">{name}</div>
+              <div className="text-xs text-muted-foreground">{email}</div>
+            </div>
+            <UserButton afterSignOutUrl="/sign-in" />
+          </div>
+        </header>
+
+        <main className="flex-1 p-4 sm:p-6">
+          <div className="mx-auto min-w-0 max-w-6xl space-y-5 animate-fade-in">
         {tab === "dashboard" && (
           <DashboardTab
             first={first}
@@ -255,8 +316,51 @@ export function EmployeePortal({ name, data }: { name: string; data: Data }) {
           </>
         )}
 
-        <FooterQuote />
+            <FooterQuote />
+          </div>
+        </main>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Notifications bell
+// ---------------------------------------------------------------
+
+function NotificationsBell({ items }: { items: { label: string; onClick: () => void }[] }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((o) => !o)} aria-label="Notifications" className="relative rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted">
+        <Bell className="h-5 w-5" />
+        {items.length > 0 && <span className="absolute right-1.5 top-1.5 flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" /><span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" /></span>}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-30 w-72 overflow-hidden rounded-xl border bg-card shadow-lg">
+          <div className="border-b px-4 py-2.5 text-sm font-semibold">Notifications</div>
+          {items.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">You&apos;re all caught up 🎉</p>
+          ) : (
+            <ul className="divide-y">
+              {items.map((it, i) => (
+                <li key={i}>
+                  <button onClick={() => { it.onClick(); setOpen(false); }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" /> {it.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
