@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -29,6 +29,8 @@ import {
   Plane,
   Plus,
   RotateCcw,
+  Settings,
+  Shield,
   Star,
   Sparkles,
   Sun,
@@ -36,6 +38,7 @@ import {
   Timer,
   Trash2,
   TrendingUp,
+  User as UserIcon,
   Wallet,
   X,
 } from "lucide-react";
@@ -113,7 +116,7 @@ const QUOTES = [
   "Done is better than perfect — then make it better.",
 ];
 
-type TabKey = "dashboard" | "tasks" | "timesheet" | "attendance" | "projects" | "goals" | "knowledge" | "chat" | "leave" | "payslips" | "reviews" | "reports";
+type TabKey = "dashboard" | "tasks" | "timesheet" | "attendance" | "projects" | "goals" | "knowledge" | "chat" | "leave" | "payslips" | "reviews" | "reports" | "settings";
 
 export function EmployeePortal({ name, email, data }: { name: string; email: string; data: Data }) {
   const router = useRouter();
@@ -178,6 +181,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
     { key: "payslips", label: "Payslips", icon: <Wallet className="h-4 w-4" /> },
     { key: "reviews", label: "Reviews", icon: <Star className="h-4 w-4" /> },
     { key: "reports", label: "Reports", icon: <BarChart3 className="h-4 w-4" /> },
+    { key: "settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
   ];
 
   const activeItem = nav.find((n) => n.key === tab);
@@ -343,6 +347,13 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           <>
             <PageTitle icon={<BarChart3 className="h-5 w-5" />} title="My Reports" subtitle="Your hours and productivity trends." />
             <ReportsTab data={data} />
+          </>
+        )}
+
+        {tab === "settings" && (
+          <>
+            <PageTitle icon={<Settings className="h-5 w-5" />} title="Settings" subtitle="Your profile and account security." />
+            <SettingsTab name={name} email={email} profile={data.profile} />
           </>
         )}
 
@@ -1561,6 +1572,82 @@ function ReportsTab({ data }: { data: Data }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Settings — profile + password
+// ---------------------------------------------------------------
+
+function SettingsTab({ name, email, profile }: { name: string; email: string; profile: Data["profile"] }) {
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <Card className="shadow-card">
+        <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><UserIcon className="h-4 w-4 text-primary" /> Profile</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3 pb-2">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-500 text-lg font-bold text-white shadow-lg shadow-primary/25">{initials(name)}</span>
+            <div><div className="font-semibold">{name}</div><div className="text-sm text-muted-foreground">{email}</div></div>
+          </div>
+          <Row label="Employee code" value={profile?.employeeCode ?? "—"} />
+          <Row label="Designation" value={profile?.designation ?? "—"} />
+          <Row label="Department" value={profile?.department ?? "—"} />
+          <Row label="Phone" value={profile?.phone ?? "—"} />
+          <Row label="Joined" value={fmtDate(profile?.joinDate ?? null)} />
+          <p className="pt-1 text-xs text-muted-foreground">To update your profile details, contact your admin/HR.</p>
+        </CardContent>
+      </Card>
+      <Card className="shadow-card">
+        <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Shield className="h-4 w-4 text-primary" /> Change password</CardTitle></CardHeader>
+        <CardContent><PasswordForm /></CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function PasswordForm() {
+  const { user } = useUser();
+  const [current, setCurrent] = React.useState("");
+  const [next, setNext] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (next.length < 8) return toast.error("New password must be at least 8 characters.");
+    if (next !== confirm) return toast.error("Passwords don't match.");
+    if (!user) return toast.error("Not signed in.");
+    setBusy(true);
+    try {
+      await user.updatePassword({ currentPassword: current, newPassword: next, signOutOfOtherSessions: true });
+      setCurrent(""); setNext(""); setConfirm("");
+      toast.success("Password updated.");
+    } catch (err) {
+      const msg = (err as { errors?: { message?: string; longMessage?: string }[] })?.errors?.[0]?.longMessage
+        ?? (err as { errors?: { message?: string }[] })?.errors?.[0]?.message
+        ?? (err instanceof Error ? err.message : "Couldn't update password");
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="cur-pw">Current password</Label>
+        <input id="cur-pw" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="new-pw">New password</Label>
+        <input id="new-pw" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="cf-pw">Confirm new password</Label>
+        <input id="cf-pw" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" />
+      </div>
+      <Button type="submit" size="sm" disabled={busy || !current || !next}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />} Update password</Button>
+    </form>
   );
 }
 
