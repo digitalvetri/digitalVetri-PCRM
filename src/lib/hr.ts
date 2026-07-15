@@ -42,6 +42,7 @@ export async function getEmployeeSelf(userId: string) {
             ...SAFE_PROJECT,
             company: { select: { name: true } },
             assignments: { select: { role: true, user: { select: { id: true, name: true } } }, orderBy: { assignedAt: "asc" } },
+            milestones: { select: { id: true, title: true, done: true, dueDate: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] },
           },
         },
       },
@@ -61,7 +62,7 @@ export async function getEmployeeSelf(userId: string) {
       where: { assignedToId: userId },
       orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
       take: 40,
-      select: { id: true, title: true, description: true, status: true, priority: true, dueDate: true },
+      select: { id: true, title: true, description: true, status: true, priority: true, dueDate: true, projectId: true, project: { select: { name: true } } },
     }),
   ]);
   return { profile, assignments, todayAttendance, recentAttendance, leaves, salary, reviews, tasks };
@@ -89,14 +90,21 @@ export async function setEmployeeTaskStatus(userId: string, taskId: string, stat
 }
 
 /** Employee adds a personal to-do for themselves. */
-export async function createSelfTask(userId: string, input: { title: string; dueDate?: Date | null; priority?: string | null }) {
+export async function createSelfTask(userId: string, input: { title: string; dueDate?: Date | null; priority?: string | null; projectId?: string | null }) {
   if (!input.title?.trim()) throw new ApiError(400, "A task needs a title.");
   const pr = (input.priority ?? "").toUpperCase();
+  // Only allow tagging a project the employee is actually assigned to.
+  let projectId: string | undefined;
+  if (input.projectId) {
+    const assigned = await prisma.projectAssignment.findFirst({ where: { userId, projectId: input.projectId }, select: { id: true } });
+    projectId = assigned ? input.projectId : undefined;
+  }
   return prisma.task.create({
     data: {
       title: input.title.trim(),
       createdById: userId,
       assignedToId: userId,
+      projectId,
       dueDate: input.dueDate ?? undefined,
       priority: pr === "URGENT" || pr === "HIGH" || pr === "LOW" ? (pr as "URGENT" | "HIGH" | "LOW") : "MEDIUM",
     },
@@ -230,7 +238,7 @@ export async function listEmployees() {
 export async function assignTask(
   adminId: string,
   employeeId: string,
-  input: { title: string; description?: string | null; dueDate?: Date | null; priority?: string | null }
+  input: { title: string; description?: string | null; dueDate?: Date | null; priority?: string | null; projectId?: string | null }
 ) {
   const emp = await prisma.user.findFirst({ where: { id: employeeId, role: "EMPLOYEE" }, select: { id: true } });
   if (!emp) throw new ApiError(400, "Not an employee.");
@@ -242,6 +250,7 @@ export async function assignTask(
       description: input.description?.trim() || undefined,
       createdById: adminId,
       assignedToId: employeeId,
+      projectId: input.projectId || undefined,
       dueDate: input.dueDate ?? undefined,
       priority: pr === "URGENT" || pr === "HIGH" || pr === "LOW" ? (pr as "URGENT" | "HIGH" | "LOW") : "MEDIUM",
     },
@@ -323,8 +332,30 @@ export async function listProjects() {
     include: {
       company: { select: { name: true } },
       assignments: { include: { user: { select: { id: true, name: true } } } },
+      milestones: { select: { id: true, title: true, done: true, dueDate: true, order: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] },
+      _count: { select: { tasks: true } },
     },
   });
+}
+
+// --- Milestones (admin) ---
+
+export async function addMilestone(projectId: string, input: { title: string; dueDate?: Date | null }) {
+  if (!input.title?.trim()) throw new ApiError(400, "A milestone needs a title.");
+  const proj = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+  if (!proj) throw new ApiError(404, "Project not found.");
+  const count = await prisma.milestone.count({ where: { projectId } });
+  return prisma.milestone.create({ data: { projectId, title: input.title.trim(), dueDate: input.dueDate ?? undefined, order: count } });
+}
+
+export async function toggleMilestone(id: string) {
+  const m = await prisma.milestone.findUnique({ where: { id }, select: { done: true } });
+  if (!m) throw new ApiError(404, "Milestone not found.");
+  return prisma.milestone.update({ where: { id }, data: { done: !m.done } });
+}
+
+export async function deleteMilestone(id: string) {
+  await prisma.milestone.delete({ where: { id } });
 }
 
 export async function assignEmployeeToProject(projectId: string, userId: string, role?: string | null) {

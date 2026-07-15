@@ -55,7 +55,7 @@ import { formatINR, cn } from "@/lib/utils";
 // Serialized types (mirror /me/page.tsx)
 // ---------------------------------------------------------------
 
-interface TaskItem { id: string; title: string; description: string | null; status: string; priority: string; dueDate: string | null }
+interface TaskItem { id: string; title: string; description: string | null; status: string; priority: string; dueDate: string | null; projectId?: string | null; projectName?: string | null }
 
 interface Data {
   profile: { employeeCode: string; designation: string | null; department: string | null; phone: string | null; joinDate: string | null } | null;
@@ -71,6 +71,7 @@ interface Data {
       dueDate: string | null;
       company: string | null;
       team: { id: string; name: string; role: string | null }[];
+      milestones: { id: string; title: string; done: boolean; dueDate: string | null }[];
     };
   }[];
   todayAttendance: { checkIn: string | null; checkOut: string | null; status: string } | null;
@@ -309,7 +310,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
         {tab === "tasks" && (
           <>
             <PageTitle icon={<ListChecks className="h-5 w-5" />} title="My Tasks" subtitle="Everything on your plate, in one place." />
-            <TasksCard tasks={data.tasks} busy={busy} onStatus={setTaskStatus} onAdd={() => router.refresh()} post={post} pct={pct} doneCount={doneCount} />
+            <TasksCard tasks={data.tasks} busy={busy} onStatus={setTaskStatus} onAdd={() => router.refresh()} post={post} pct={pct} doneCount={doneCount} projects={data.assignments.map((a) => ({ id: a.project.id, name: a.project.name }))} />
           </>
         )}
 
@@ -343,7 +344,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
         {tab === "projects" && (
           <>
             <PageTitle icon={<Briefcase className="h-5 w-5" />} title="Projects" subtitle="What you're assigned to." />
-            <ProjectsSection assignments={data.assignments} timesheet={data.timesheet} />
+            <ProjectsSection assignments={data.assignments} timesheet={data.timesheet} tasks={data.tasks} />
           </>
         )}
 
@@ -878,6 +879,7 @@ function TasksCard({
   post,
   pct,
   doneCount,
+  projects,
 }: {
   tasks: TaskItem[];
   busy: string | null;
@@ -886,6 +888,7 @@ function TasksCard({
   post: (url: string, body?: unknown, method?: string) => Promise<unknown>;
   pct: number;
   doneCount: number;
+  projects: { id: string; name: string }[];
 }) {
   const [filter, setFilter] = React.useState<"open" | "all">("open");
   const [view, setView] = React.useState<"list" | "board">("list");
@@ -920,7 +923,7 @@ function TasksCard({
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        <AddTaskRow post={post} onAdd={onAdd} />
+        <AddTaskRow post={post} onAdd={onAdd} projects={projects} />
         {view === "board" ? (
           <KanbanBoard tasks={tasks} busy={busy} onStatus={onStatus} />
         ) : shown.length === 0 ? (
@@ -948,6 +951,7 @@ function TasksCard({
                       <span className={cn("font-medium", done && "text-muted-foreground line-through")}>{t.title}</span>
                       {inProg && <Badge variant="outline" className="border-amber-500/40 text-[10px] text-amber-600">In progress</Badge>}
                       {t.priority && t.priority !== "MEDIUM" && <Badge variant="outline" className={cn("text-[10px]", PRIORITY_TONE[t.priority])}>{t.priority}</Badge>}
+                      {t.projectName && <Badge variant="outline" className="border-primary/30 text-[10px] text-primary"><Briefcase className="mr-0.5 inline h-2.5 w-2.5" />{t.projectName}</Badge>}
                     </div>
                     {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}
                     {t.dueDate && <p className="mt-0.5 text-xs text-muted-foreground"><CalendarDays className="mr-1 inline h-3 w-3" /> Due {fmtDate(t.dueDate)}</p>}
@@ -1021,17 +1025,18 @@ function KanbanBoard({ tasks, busy, onStatus }: { tasks: TaskItem[]; busy: strin
   );
 }
 
-function AddTaskRow({ post, onAdd }: { post: (url: string, body?: unknown, method?: string) => Promise<unknown>; onAdd: () => void }) {
+function AddTaskRow({ post, onAdd, projects }: { post: (url: string, body?: unknown, method?: string) => Promise<unknown>; onAdd: () => void; projects: { id: string; name: string }[] }) {
   const [title, setTitle] = React.useState("");
   const [due, setDue] = React.useState("");
   const [priority, setPriority] = React.useState("MEDIUM");
+  const [projectId, setProjectId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
     setBusy(true);
     try {
-      await post("/api/me/tasks", { title, dueDate: due || undefined, priority });
+      await post("/api/me/tasks", { title, dueDate: due || undefined, priority, projectId: projectId || undefined });
       setTitle("");
       setDue("");
       toast.success("Task added");
@@ -1045,6 +1050,12 @@ function AddTaskRow({ post, onAdd }: { post: (url: string, body?: unknown, metho
   return (
     <form onSubmit={add} className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-2">
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a task for yourself…" className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" />
+      {projects.length > 0 && (
+        <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
+          <option value="">No project</option>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      )}
       <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" />
       <select value={priority} onChange={(e) => setPriority(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
         {["URGENT", "HIGH", "MEDIUM", "LOW"].map((p) => <option key={p} value={p}>{p}</option>)}
@@ -1080,13 +1091,13 @@ function timelineProgress(start: string | null, due: string | null): number | nu
   return Math.max(0, Math.min(100, Math.round(((Date.now() - s) / (e - s)) * 100)));
 }
 
-function ProjectsSection({ assignments, timesheet }: { assignments: Data["assignments"]; timesheet: Data["timesheet"] }) {
+function ProjectsSection({ assignments, timesheet, tasks }: { assignments: Data["assignments"]; timesheet: Data["timesheet"]; tasks: TaskItem[] }) {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const active = assignments.find((a) => a.project.id === openId);
 
   if (assignments.length === 0) return <Card className="shadow-sm"><CardContent className="py-8"><Empty>No projects assigned yet.</Empty></CardContent></Card>;
 
-  if (active) return <ProjectDetail assignment={active} timesheet={timesheet} onBack={() => setOpenId(null)} />;
+  if (active) return <ProjectDetail assignment={active} timesheet={timesheet} tasks={tasks.filter((t) => t.projectId === active.project.id)} onBack={() => setOpenId(null)} />;
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -1111,11 +1122,13 @@ function ProjectsSection({ assignments, timesheet }: { assignments: Data["assign
   );
 }
 
-function ProjectDetail({ assignment, timesheet, onBack }: { assignment: Data["assignments"][number]; timesheet: Data["timesheet"]; onBack: () => void }) {
+function ProjectDetail({ assignment, timesheet, tasks, onBack }: { assignment: Data["assignments"][number]; timesheet: Data["timesheet"]; tasks: TaskItem[]; onBack: () => void }) {
   const p = assignment.project;
   const health = projectHealth(p.status, p.dueDate);
   const progress = timelineProgress(p.startDate, p.dueDate);
   const myHours = timesheet.filter((t) => t.projectId === p.id).reduce((s, t) => s + t.hours, 0);
+  const msDone = p.milestones.filter((m) => m.done).length;
+  const msPct = p.milestones.length ? Math.round((msDone / p.milestones.length) * 100) : 0;
 
   return (
     <div className="space-y-4">
@@ -1154,6 +1167,51 @@ function ProjectDetail({ assignment, timesheet, onBack }: { assignment: Data["as
               )}
             </CardContent>
           </Card>
+
+          {p.milestones.length > 0 && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Milestones</CardTitle>
+                  <span className="text-xs font-semibold text-muted-foreground">{msDone}/{p.milestones.length} · {msPct}%</span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div className={cn("h-full rounded-full", msPct === 100 ? "bg-emerald-500" : "bg-primary")} style={{ width: `${msPct}%` }} />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {p.milestones.map((m) => (
+                    <li key={m.id} className="flex items-center gap-2.5 text-sm">
+                      {m.done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                      <span className={cn("flex-1", m.done && "text-muted-foreground line-through")}>{m.title}</span>
+                      {m.dueDate && <span className="text-xs text-muted-foreground">{fmtDate(m.dueDate)}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {tasks.length > 0 && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3"><CardTitle className="text-base">My tasks on this project ({tasks.length})</CardTitle></CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {tasks.map((t) => {
+                    const done = t.status === "DONE";
+                    return (
+                      <li key={t.id} className="flex items-center gap-2.5 text-sm">
+                        {done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> : t.status === "IN_PROGRESS" ? <CircleDot className="h-4 w-4 shrink-0 text-amber-500" /> : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                        <span className={cn("flex-1", done && "text-muted-foreground line-through")}>{t.title}</span>
+                        {t.dueDate && <span className="text-xs text-muted-foreground">{fmtDate(t.dueDate)}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="shadow-sm">
             <CardHeader className="pb-3"><CardTitle className="text-base">Team ({p.team.length})</CardTitle></CardHeader>

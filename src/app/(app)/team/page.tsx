@@ -57,6 +57,8 @@ export default async function TeamPage() {
     value: p.value,
     dueDate: p.dueDate?.toISOString() ?? null,
     assignments: p.assignments.map((a) => ({ userId: a.userId, name: a.user.name, role: a.role })),
+    milestones: p.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done, dueDate: m.dueDate?.toISOString() ?? null })),
+    taskCount: p._count.tasks,
   }));
 
   const leaveRows = leaves.map((l) => ({

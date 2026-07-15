@@ -10,6 +10,7 @@ const schema = z.object({
   description: z.string().max(1000).optional().nullable(),
   dueDate: z.string().optional().nullable(),
   priority: z.enum(["URGENT", "HIGH", "MEDIUM", "LOW"]).optional(),
+  projectId: z.string().optional().nullable(),
 });
 
 /** POST /api/team/tasks — admin assigns a task to an employee. */
@@ -22,6 +23,7 @@ export async function POST(req: Request) {
       description: b.description,
       dueDate: b.dueDate ? parseISTDate(b.dueDate) : null,
       priority: b.priority,
+      projectId: b.projectId,
     });
     return { ok: true, id: task.id };
   });

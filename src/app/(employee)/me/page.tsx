@@ -49,6 +49,7 @@ export default async function MePage() {
         dueDate: a.project.dueDate?.toISOString() ?? null,
         company: a.project.company?.name ?? null,
         team: a.project.assignments.map((m) => ({ id: m.user.id, name: m.user.name, role: m.role })),
+        milestones: a.project.milestones.map((ms) => ({ id: ms.id, title: ms.title, done: ms.done, dueDate: ms.dueDate?.toISOString() ?? null })),
       },
     })),
     todayAttendance: self.todayAttendance
@@ -98,6 +99,8 @@ export default async function MePage() {
       status: t.status,
       priority: t.priority,
       dueDate: t.dueDate?.toISOString() ?? null,
+      projectId: t.projectId,
+      projectName: t.project?.name ?? null,
     })),
     announcements: announcements.map((a) => ({
       id: a.id,

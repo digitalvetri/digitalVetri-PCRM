@@ -34,6 +34,8 @@ interface ProjectRow {
   value: number | null;
   dueDate: string | null;
   assignments: { userId: string; name: string; role: string | null }[];
+  milestones: { id: string; title: string; done: boolean; dueDate: string | null }[];
+  taskCount: number;
 }
 interface LeaveRow {
   id: string;
@@ -492,7 +494,7 @@ function ManageEmployee({ employee, projects, onDone }: { employee: EmployeeRow;
     <div className="space-y-4 border-t bg-muted/20 p-4">
       <EmployeeDetail employeeId={employee.id} />
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <AssignTaskPanel employee={employee} onDone={onDone} />
+        <AssignTaskPanel employee={employee} projects={projects} onDone={onDone} />
         <AssignPanel employee={employee} projects={projects} onDone={onDone} />
         <SalaryPanel employee={employee} onDone={onDone} />
         <ReviewPanel employee={employee} onDone={onDone} />
@@ -609,19 +611,23 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function AssignTaskPanel({ employee, onDone }: { employee: EmployeeRow; onDone: () => void }) {
+function AssignTaskPanel({ employee, projects, onDone }: { employee: EmployeeRow; projects: ProjectRow[]; onDone: () => void }) {
   const [title, setTitle] = React.useState("");
   const [dueDate, setDueDate] = React.useState("");
   const [priority, setPriority] = React.useState("MEDIUM");
+  const [projectId, setProjectId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // Only offer projects this employee is on.
+  const theirProjects = projects.filter((p) => p.assignments.some((a) => a.userId === employee.id));
   async function assign() {
     if (!title.trim()) return toast.error("Task title required");
     setBusy(true);
     try {
-      await post("/api/team/tasks", { employeeId: employee.id, title, dueDate: dueDate || undefined, priority });
+      await post("/api/team/tasks", { employeeId: employee.id, title, dueDate: dueDate || undefined, priority, projectId: projectId || undefined });
       toast.success("Task assigned");
       setTitle("");
       setDueDate("");
+      setProjectId("");
       onDone();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
@@ -638,6 +644,12 @@ function AssignTaskPanel({ employee, onDone }: { employee: EmployeeRow; onDone: 
           {["URGENT", "HIGH", "MEDIUM", "LOW"].map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
       </div>
+      {theirProjects.length > 0 && (
+        <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+          <option value="">No project</option>
+          {theirProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      )}
       <Button size="sm" onClick={assign} disabled={busy}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Assign
       </Button>
@@ -790,10 +802,10 @@ function ProjectsTab({ projects, employees }: { projects: ProjectRow[]; employee
                   <Badge variant="outline" className={cn("text-[10px]", STATUS_TONE[p.status])}>{p.status}</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {p.company ?? "Internal"}{p.value != null ? ` · ${formatINR(p.value)}` : ""}{p.dueDate ? ` · due ${fmtDate(p.dueDate)}` : ""}
+                  {p.company ?? "Internal"}{p.value != null ? ` · ${formatINR(p.value)}` : ""}{p.dueDate ? ` · due ${fmtDate(p.dueDate)}` : ""}{p.taskCount ? ` · ${p.taskCount} task${p.taskCount !== 1 ? "s" : ""}` : ""}
                 </p>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-1.5">
                   {p.assignments.length === 0 ? (
                     <span className="text-xs text-muted-foreground">No one assigned</span>
@@ -804,11 +816,54 @@ function ProjectsTab({ projects, employees }: { projects: ProjectRow[]; employee
                   )}
                 </div>
                 <AssignToProject projectId={p.id} employees={employees} onDone={() => router.refresh()} />
+                <MilestoneManager projectId={p.id} milestones={p.milestones} onDone={() => router.refresh()} />
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function MilestoneManager({ projectId, milestones, onDone }: { projectId: string; milestones: ProjectRow["milestones"]; onDone: () => void }) {
+  const [title, setTitle] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const done = milestones.filter((m) => m.done).length;
+  const pct = milestones.length ? Math.round((done / milestones.length) * 100) : 0;
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true);
+    try { await post("/api/team/milestones", { projectId, title }); setTitle(""); onDone(); }
+    catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    finally { setBusy(false); }
+  }
+  async function toggle(id: string) { try { await post(`/api/team/milestones/${id}`, {}, "PATCH"); onDone(); } catch { toast.error("Failed"); } }
+  async function remove(id: string) { try { await post(`/api/team/milestones/${id}`, {}, "DELETE"); onDone(); } catch { toast.error("Failed"); } }
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-2.5">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Milestones</span>
+        {milestones.length > 0 && <span className="text-xs text-muted-foreground">{done}/{milestones.length} · {pct}%</span>}
+      </div>
+      {milestones.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {milestones.map((m) => (
+            <li key={m.id} className="flex items-center gap-2 text-sm">
+              <button onClick={() => toggle(m.id)} aria-label="Toggle">{m.done ? <Check className="h-4 w-4 text-emerald-500" /> : <span className="block h-4 w-4 rounded-full border" />}</button>
+              <span className={cn("flex-1", m.done && "text-muted-foreground line-through")}>{m.title}</span>
+              <button onClick={() => remove(m.id)} aria-label="Delete" className="rounded p-0.5 text-muted-foreground hover:text-red-600"><X className="h-3 w-3" /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={add} className="flex gap-1.5">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a milestone…" className="h-8 flex-1 rounded-md border bg-background px-2 text-xs" />
+        <Button size="sm" className="h-8" disabled={busy || !title.trim()}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}</Button>
+      </form>
     </div>
   );
 }
