@@ -40,6 +40,7 @@ import {
   Trash2,
   TrendingUp,
   User as UserIcon,
+  Users,
   Wallet,
   X,
 } from "lucide-react";
@@ -85,6 +86,7 @@ interface Data {
   goals: { id: string; title: string; detail: string | null; target: number; current: number; unit: string | null; dueDate: string | null; status: string }[];
   holidays: { id: string; date: string; name: string }[];
   notifications: { id: string; type: string; title: string; body: string | null; link: string | null; read: boolean; createdAt: string }[];
+  directory: { id: string; name: string; email: string; designation: string | null; department: string | null; phone: string | null; code: string | null }[];
   leaveBalances: { type: string; allowance: number; used: number; remaining: number }[];
   articles: { id: string; title: string; category: string | null; author: string; updatedAt: string }[];
   performance: { attendanceRate: number | null; avgRating: number | null; projectCount: number; score: number; reviewCount: number };
@@ -119,7 +121,7 @@ const QUOTES = [
   "Done is better than perfect — then make it better.",
 ];
 
-type TabKey = "dashboard" | "assistant" | "tasks" | "timesheet" | "calendar" | "attendance" | "projects" | "goals" | "knowledge" | "chat" | "leave" | "payslips" | "reviews" | "reports" | "settings";
+type TabKey = "dashboard" | "assistant" | "tasks" | "timesheet" | "calendar" | "attendance" | "projects" | "goals" | "knowledge" | "directory" | "chat" | "leave" | "payslips" | "reviews" | "reports" | "settings";
 
 export function EmployeePortal({ name, email, data }: { name: string; email: string; data: Data }) {
   const router = useRouter();
@@ -181,6 +183,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
     { key: "projects", label: "Projects", icon: <Briefcase className="h-4 w-4" />, badge: data.assignments.length || undefined },
     { key: "goals", label: "Goals", icon: <Target className="h-4 w-4" />, badge: activeGoals || undefined },
     { key: "knowledge", label: "Knowledge", icon: <BookOpen className="h-4 w-4" /> },
+    { key: "directory", label: "Directory", icon: <Users className="h-4 w-4" /> },
     { key: "chat", label: "Team Chat", icon: <MessageSquare className="h-4 w-4" /> },
     { key: "leave", label: "Leave", icon: <Plane className="h-4 w-4" />, badge: pendingLeave || undefined },
     { key: "payslips", label: "Payslips", icon: <Wallet className="h-4 w-4" /> },
@@ -359,6 +362,13 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           <>
             <PageTitle icon={<BookOpen className="h-5 w-5" />} title="Knowledge Base" subtitle="Team docs, SOPs and how-tos." />
             <KnowledgeTab articles={data.articles} />
+          </>
+        )}
+
+        {tab === "directory" && (
+          <>
+            <PageTitle icon={<Users className="h-5 w-5" />} title="Team Directory" subtitle="Find and reach your colleagues." />
+            <DirectoryTab people={data.directory} />
           </>
         )}
 
@@ -1686,6 +1696,43 @@ function ReportsTab({ data }: { data: Data }) {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Team directory
+// ---------------------------------------------------------------
+
+function DirectoryTab({ people }: { people: Data["directory"] }) {
+  const [q, setQ] = React.useState("");
+  const filtered = people.filter((p) => (p.name + (p.designation ?? "") + (p.department ?? "") + p.email).toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="space-y-4">
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, role or department…" className="h-10 w-full rounded-lg border bg-card px-4 text-sm outline-none focus:border-primary" />
+      {filtered.length === 0 ? (
+        <Card className="shadow-sm"><CardContent className="py-10"><Empty>{people.length === 0 ? "No colleagues listed yet." : "No matches."}</Empty></CardContent></Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((p) => (
+            <Card key={p.id} className="shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-500 text-sm font-bold text-white shadow-lg shadow-primary/25">{initials(p.name)}</span>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{p.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">{p.designation ?? "Team member"}{p.department ? ` · ${p.department}` : ""}</div>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-1 text-xs">
+                  <a href={`mailto:${p.email}`} className="block truncate text-primary hover:underline">{p.email}</a>
+                  {p.phone && <a href={`tel:${p.phone}`} className="block text-muted-foreground hover:text-foreground">{p.phone}</a>}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

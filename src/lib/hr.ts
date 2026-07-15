@@ -439,6 +439,59 @@ export async function upsertSalary(input: {
   });
 }
 
+// --- Payroll runs ---
+
+/** Every active employee's payslip for a month (null where not yet generated). */
+export async function getPayrollForMonth(month: string) {
+  const employees = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", isActive: true },
+    select: { id: true, name: true, employeeProfile: { select: { employeeCode: true, baseSalary: true, designation: true } } },
+    orderBy: { name: "asc" },
+  });
+  const records = await prisma.salaryRecord.findMany({ where: { month, userId: { in: employees.map((e) => e.id) } } });
+  const byUser = new Map(records.map((r) => [r.userId, r]));
+  const rows = employees.map((e) => {
+    const r = byUser.get(e.id);
+    return {
+      userId: e.id,
+      name: e.name,
+      code: e.employeeProfile?.employeeCode ?? "—",
+      baseSalary: e.employeeProfile?.baseSalary ?? 0,
+      record: r ? { id: r.id, baseSalary: r.baseSalary, allowances: r.allowances, deductions: r.deductions, netPay: r.netPay, status: r.status } : null,
+    };
+  });
+  const generated = rows.filter((r) => r.record).length;
+  const paid = rows.filter((r) => r.record?.status === "PAID").length;
+  const totalNet = rows.reduce((s, r) => s + (r.record?.netPay ?? 0), 0);
+  return { month, rows, generated, paid, pending: rows.length - generated, headcount: rows.length, totalNet };
+}
+
+/** Create a DRAFT payslip for every active employee that doesn't already have one for the month. */
+export async function generatePayrollRun(month: string) {
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new ApiError(400, "Month must be yyyy-MM.");
+  const employees = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", isActive: true },
+    select: { id: true, employeeProfile: { select: { baseSalary: true } } },
+  });
+  const existing = await prisma.salaryRecord.findMany({ where: { month, userId: { in: employees.map((e) => e.id) } }, select: { userId: true } });
+  const has = new Set(existing.map((e) => e.userId));
+  const toCreate = employees.filter((e) => !has.has(e.id));
+  if (toCreate.length === 0) return { created: 0 };
+  await prisma.salaryRecord.createMany({
+    data: toCreate.map((e) => {
+      const base = e.employeeProfile?.baseSalary ?? 0;
+      return { userId: e.id, month, baseSalary: base, allowances: 0, deductions: 0, netPay: Math.round(base), status: "DRAFT" as const };
+    }),
+  });
+  return { created: toCreate.length };
+}
+
+/** Mark all DRAFT payslips for the month as PAID. */
+export async function markPayrollPaid(month: string) {
+  const res = await prisma.salaryRecord.updateMany({ where: { month, status: "DRAFT" }, data: { status: "PAID", paidAt: new Date() } });
+  return { paid: res.count };
+}
+
 // --- Performance reviews ---
 
 export async function createReview(input: {
@@ -650,6 +703,24 @@ export async function getTrackingReport(days = 7) {
   });
 
   return { days, dayKeys, rows };
+}
+
+/** Company directory — safe contact info only (no salary/private HR data). */
+export async function getDirectory() {
+  const users = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", isActive: true },
+    select: { id: true, name: true, email: true, employeeProfile: { select: { designation: true, department: true, phone: true, employeeCode: true } } },
+    orderBy: { name: "asc" },
+  });
+  return users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    designation: u.employeeProfile?.designation ?? null,
+    department: u.employeeProfile?.department ?? null,
+    phone: u.employeeProfile?.phone ?? null,
+    code: u.employeeProfile?.employeeCode ?? null,
+  }));
 }
 
 /** Aggregate team analytics for the AI Company People head. */

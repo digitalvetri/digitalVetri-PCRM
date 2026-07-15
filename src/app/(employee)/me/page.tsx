@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/rbac";
-import { getEmployeeSelf, getEmployeePerformance } from "@/lib/hr";
+import { getEmployeeSelf, getEmployeePerformance, getDirectory } from "@/lib/hr";
 import { listAnnouncements } from "@/lib/announcements";
 import { listTimesheet } from "@/lib/timesheet";
 import { listGoals } from "@/lib/goals";
@@ -15,7 +15,7 @@ export default async function MePage() {
   const user = await getCurrentUser();
   if (!user) return null; // layout already redirects; satisfies types
 
-  const [self, performance, announcements, timesheet, goals, holidays, leaveBalances, articles, notifications] = await Promise.all([
+  const [self, performance, announcements, timesheet, goals, holidays, leaveBalances, articles, notifications, directory] = await Promise.all([
     getEmployeeSelf(user.id),
     getEmployeePerformance(user.id),
     listAnnouncements(10),
@@ -25,6 +25,7 @@ export default async function MePage() {
     getLeaveBalances(user.id),
     listArticles(),
     listNotifications(user.id),
+    getDirectory(),
   ]);
 
   const data = {
@@ -129,6 +130,7 @@ export default async function MePage() {
     })),
     holidays: holidays.map((h) => ({ id: h.id, date: h.date.toISOString(), name: h.name })),
     notifications: notifications.map((n) => ({ id: n.id, type: n.type, title: n.title, body: n.body, link: n.link, read: n.read, createdAt: n.createdAt.toISOString() })),
+    directory,
     leaveBalances,
     articles: articles.map((a) => ({
       id: a.id,

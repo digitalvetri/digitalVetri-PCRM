@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, BookOpen, Briefcase, CalendarDays, Check, Clock, Loader2, Megaphone, Plane, Plus, UserCheck, UserPlus, Users, X } from "lucide-react";
+import { AlertTriangle, BookOpen, Briefcase, CalendarDays, Check, Clock, Loader2, Megaphone, Plane, Plus, UserCheck, UserPlus, Users, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -113,6 +113,22 @@ interface HolidayRow {
   date: string;
   name: string;
 }
+interface PayrollRow {
+  userId: string;
+  name: string;
+  code: string;
+  baseSalary: number;
+  record: { id: string; baseSalary: number; allowances: number; deductions: number; netPay: number; status: string } | null;
+}
+interface Payroll {
+  month: string;
+  rows: PayrollRow[];
+  generated: number;
+  paid: number;
+  pending: number;
+  headcount: number;
+  totalNet: number;
+}
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
@@ -132,7 +148,7 @@ const STATUS_TONE: Record<string, string> = {
   ON_HOLD: "border-amber-500/40 text-amber-600",
 };
 
-export function TeamManager({ employees, projects, leaves, dashboard, tracking, announcements, articles, holidays }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking; announcements: AnnouncementRow[]; articles: ArticleRow[]; holidays: HolidayRow[] }) {
+export function TeamManager({ employees, projects, leaves, dashboard, tracking, announcements, articles, holidays, payroll }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking; announcements: AnnouncementRow[]; articles: ArticleRow[]; holidays: HolidayRow[]; payroll: Payroll }) {
   const pendingLeave = leaves.filter((l) => l.status === "PENDING").length;
   return (
     <Tabs defaultValue="overview" className="animate-fade-in">
@@ -141,6 +157,7 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking, 
         <TabsTrigger value="tracking">Tracking</TabsTrigger>
         <TabsTrigger value="employees">Employees ({employees.length})</TabsTrigger>
         <TabsTrigger value="projects">Projects ({projects.length})</TabsTrigger>
+        <TabsTrigger value="payroll">Payroll</TabsTrigger>
         <TabsTrigger value="leave">Leave{pendingLeave ? ` (${pendingLeave})` : ""}</TabsTrigger>
         <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
         <TabsTrigger value="chat">Chat</TabsTrigger>
@@ -156,6 +173,9 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking, 
       </TabsContent>
       <TabsContent value="projects" className="mt-4">
         <ProjectsTab projects={projects} employees={employees} />
+      </TabsContent>
+      <TabsContent value="payroll" className="mt-4">
+        <PayrollTab initial={payroll} />
       </TabsContent>
       <TabsContent value="leave" className="mt-4">
         <LeaveTab leaves={leaves} holidays={holidays} />
@@ -369,6 +389,90 @@ function KpiCard({ icon, label, value, hint, tone }: { icon: React.ReactNode; la
         {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------
+// Payroll runs
+// ---------------------------------------------------------------
+
+function PayrollTab({ initial }: { initial: Payroll }) {
+  const [data, setData] = React.useState<Payroll>(initial);
+  const [month, setMonth] = React.useState(initial.month);
+  const [busy, setBusy] = React.useState<string | null>(null);
+
+  async function load(m: string) {
+    setBusy("load");
+    try {
+      const res = await fetch(`/api/team/payroll?month=${m}`);
+      const json = await res.json();
+      if (res.ok) setData(json);
+    } catch { toast.error("Failed to load"); } finally { setBusy(null); }
+  }
+  async function run(action: "generate" | "markPaid") {
+    setBusy(action);
+    try {
+      const res = await fetch("/api/team/payroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, action }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed");
+      setData(json);
+      toast.success(action === "generate" ? `Generated ${json.created} payslip(s)` : `Marked ${json.paid} as paid`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(null); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard icon={<Users className="h-4 w-4" />} tone="primary" label="Employees" value={String(data.headcount)} />
+        <KpiCard icon={<Check className="h-4 w-4" />} tone="emerald" label="Payslips ready" value={`${data.generated}/${data.headcount}`} hint={data.pending ? `${data.pending} not generated` : "all generated"} />
+        <KpiCard icon={<Check className="h-4 w-4" />} tone={data.paid < data.generated ? "amber" : "emerald"} label="Paid" value={`${data.paid}/${data.generated}`} />
+        <KpiCard icon={<Wallet className="h-4 w-4" />} tone="primary" label="Total net" value={formatINR(data.totalNet)} />
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-base">Payroll — {data.month}</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); load(e.target.value); }} className="h-9 rounded-md border bg-background px-2 text-sm" />
+              <Button size="sm" variant="outline" onClick={() => run("generate")} disabled={busy !== null || data.pending === 0}>
+                {busy === "generate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Generate payslips
+              </Button>
+              <Button size="sm" onClick={() => run("markPaid")} disabled={busy !== null || data.generated === data.paid || data.generated === 0}>
+                {busy === "markPaid" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Mark all paid
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                <th className="py-2">Employee</th>
+                <th className="py-2 text-right">Base</th>
+                <th className="py-2 text-right">Net pay</th>
+                <th className="py-2 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((r) => (
+                <tr key={r.userId} className="border-b last:border-0">
+                  <td className="py-2.5"><div className="font-medium">{r.name}</div><div className="text-xs text-muted-foreground">{r.code}</div></td>
+                  <td className="py-2.5 text-right tabular-nums">{formatINR(r.baseSalary)}</td>
+                  <td className="py-2.5 text-right font-semibold tabular-nums">{r.record ? formatINR(r.record.netPay) : "—"}</td>
+                  <td className="py-2.5 text-right">
+                    {r.record ? (
+                      <Badge variant="outline" className={cn("text-[10px]", r.record.status === "PAID" ? "border-emerald-500/40 text-emerald-600" : "text-muted-foreground")}>{r.record.status}</Badge>
+                    ) : <span className="text-xs text-muted-foreground">not generated</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-muted-foreground">Generating creates DRAFT payslips from each employee&apos;s base salary (existing slips are never overwritten). Edit individual slips per employee under the Employees tab.</p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
