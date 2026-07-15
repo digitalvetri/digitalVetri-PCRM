@@ -57,7 +57,16 @@ interface Data {
   assignments: {
     id: string;
     role: string | null;
-    project: { id: string; name: string; description: string | null; status: string; startDate: string | null; dueDate: string | null };
+    project: {
+      id: string;
+      name: string;
+      description: string | null;
+      status: string;
+      startDate: string | null;
+      dueDate: string | null;
+      company: string | null;
+      team: { id: string; name: string; role: string | null }[];
+    };
   }[];
   todayAttendance: { checkIn: string | null; checkOut: string | null; status: string } | null;
   recentAttendance: { date: string; status: string; checkIn: string | null; checkOut: string | null }[];
@@ -296,7 +305,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
         {tab === "projects" && (
           <>
             <PageTitle icon={<Briefcase className="h-5 w-5" />} title="Projects" subtitle="What you're assigned to." />
-            <ProjectsGrid assignments={data.assignments} />
+            <ProjectsSection assignments={data.assignments} timesheet={data.timesheet} />
           </>
         )}
 
@@ -953,27 +962,139 @@ function AddTaskRow({ post, onAdd }: { post: (url: string, body?: unknown, metho
 // Section content blocks (used by tabs)
 // ---------------------------------------------------------------
 
-function ProjectsGrid({ assignments }: { assignments: Data["assignments"] }) {
+function projectHealth(status: string, dueDate: string | null): { label: string; tone: string } {
+  if (status === "COMPLETED") return { label: "Completed", tone: "text-emerald-600" };
+  if (status === "ON_HOLD") return { label: "On hold", tone: "text-amber-600" };
+  if (dueDate) {
+    const days = Math.ceil((new Date(dueDate).getTime() - Date.now()) / 86_400_000);
+    if (days < 0) return { label: `Overdue by ${Math.abs(days)}d`, tone: "text-red-600" };
+    if (days <= 7) return { label: `Due in ${days}d`, tone: "text-amber-600" };
+    return { label: "On track", tone: "text-emerald-600" };
+  }
+  return { label: "Active", tone: "text-primary" };
+}
+
+function timelineProgress(start: string | null, due: string | null): number | null {
+  if (!start || !due) return null;
+  const s = new Date(start).getTime();
+  const e = new Date(due).getTime();
+  if (e <= s) return null;
+  return Math.max(0, Math.min(100, Math.round(((Date.now() - s) / (e - s)) * 100)));
+}
+
+function ProjectsSection({ assignments, timesheet }: { assignments: Data["assignments"]; timesheet: Data["timesheet"] }) {
+  const [openId, setOpenId] = React.useState<string | null>(null);
+  const active = assignments.find((a) => a.project.id === openId);
+
   if (assignments.length === 0) return <Card className="shadow-sm"><CardContent className="py-8"><Empty>No projects assigned yet.</Empty></CardContent></Card>;
+
+  if (active) return <ProjectDetail assignment={active} timesheet={timesheet} onBack={() => setOpenId(null)} />;
+
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {assignments.map((a) => (
-        <Card key={a.id} className="shadow-sm transition-shadow hover:shadow-md">
-          <CardContent className="p-4">
+      {assignments.map((a) => {
+        const health = projectHealth(a.project.status, a.project.dueDate);
+        return (
+          <button key={a.id} onClick={() => setOpenId(a.project.id)} className="rounded-xl border bg-card p-4 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md">
             <div className="flex items-start justify-between gap-2">
               <p className="font-medium">{a.project.name}</p>
               <Badge variant="outline" className={cn("text-[10px]", STATUS_TONE[a.project.status])}>{a.project.status}</Badge>
             </div>
-            {a.role && <p className="text-xs text-muted-foreground">Your role: {a.role}</p>}
-            {a.project.description && <p className="mt-1 text-sm text-muted-foreground">{a.project.description}</p>}
-            {a.project.dueDate && (
-              <p className="mt-2 text-xs text-muted-foreground"><CalendarDays className="mr-1 inline h-3 w-3" /> Due {fmtDate(a.project.dueDate)}</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+            {a.project.company && <p className="text-xs text-muted-foreground">{a.project.company}</p>}
+            {a.project.description && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{a.project.description}</p>}
+            <div className="mt-3 flex items-center justify-between text-xs">
+              <span className={cn("font-medium", health.tone)}>● {health.label}</span>
+              <span className="text-muted-foreground">{a.project.team.length} member{a.project.team.length !== 1 ? "s" : ""} · View →</span>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
+}
+
+function ProjectDetail({ assignment, timesheet, onBack }: { assignment: Data["assignments"][number]; timesheet: Data["timesheet"]; onBack: () => void }) {
+  const p = assignment.project;
+  const health = projectHealth(p.status, p.dueDate);
+  const progress = timelineProgress(p.startDate, p.dueDate);
+  const myHours = timesheet.filter((t) => t.projectId === p.id).reduce((s, t) => s + t.hours, 0);
+
+  return (
+    <div className="space-y-4">
+      <Button size="sm" variant="ghost" onClick={onBack}><ChevronLeft className="h-4 w-4" /> All projects</Button>
+
+      <Card className="overflow-hidden border-0 shadow-sm">
+        <div className="bg-gradient-to-br from-primary/90 to-blue-700 p-6 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold">{p.name}</h2>
+              {p.company && <p className="mt-0.5 text-sm text-blue-100">{p.company}</p>}
+            </div>
+            <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium">{p.status}</span>
+          </div>
+          <p className={cn("mt-3 text-sm font-medium text-white/90")}>● {health.label}{assignment.role ? ` · Your role: ${assignment.role}` : ""}</p>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <div className="space-y-4">
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3"><CardTitle className="text-base">Overview</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">{p.description || "No description provided for this project."}</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><div className="text-xs uppercase text-muted-foreground">Start</div><div className="font-medium">{fmtDate(p.startDate)}</div></div>
+                <div><div className="text-xs uppercase text-muted-foreground">Due</div><div className="font-medium">{fmtDate(p.dueDate)}</div></div>
+              </div>
+              {progress != null && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground"><span>Timeline</span><span className="font-medium text-foreground">{progress}% elapsed</span></div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div className={cn("h-full rounded-full", progress >= 100 ? "bg-red-500" : progress > 80 ? "bg-amber-500" : "bg-primary")} style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3"><CardTitle className="text-base">Team ({p.team.length})</CardTitle></CardHeader>
+            <CardContent>
+              {p.team.length === 0 ? (
+                <Empty>No one assigned yet.</Empty>
+              ) : (
+                <ul className="space-y-2">
+                  {p.team.map((m) => (
+                    <li key={m.id} className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{m.name.split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</span>
+                      <div className="text-sm"><span className="font-medium">{m.name}</span>{m.role && <span className="text-muted-foreground"> · {m.role}</span>}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <MetricCard icon={<Clock className="h-4 w-4" />} tone="primary" label="Your hours logged" value={`${Math.round(myHours * 10) / 10}h`} hint="last 21 days" />
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3"><CardTitle className="text-base">Details</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <Row label="Status" value={p.status} />
+              <Row label="Health" value={health.label} />
+              <Row label="Your role" value={assignment.role ?? "Member"} />
+              <Row label="Team size" value={String(p.team.length)} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return <div className="flex items-center justify-between border-b py-1.5 last:border-0"><span className="text-muted-foreground">{label}</span><span className="font-medium">{value}</span></div>;
 }
 
 function RecentAttendance({ records }: { records: Data["recentAttendance"] }) {

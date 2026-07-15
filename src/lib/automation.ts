@@ -13,6 +13,7 @@ import { notifyInstant } from "@/lib/notify";
 import { istEndOfDay } from "@/lib/time";
 import { recomputeProspectNextFollowUp } from "@/lib/follow-up-sync";
 import { computeCeoBriefing, storeCeoBriefing } from "@/lib/ceo-briefing";
+import { postSystemMessage } from "@/lib/chat";
 import { DEPARTMENT_LIST, runDepartmentShift } from "@/lib/ai/departments";
 
 export interface Watchlist {
@@ -319,8 +320,16 @@ export async function runDailyAgent(): Promise<DailyAgentResult> {
   // department reports) so it's ready — and voiced — the moment the founder
   // opens the app. Best-effort: a briefing failure must never fail the run.
   try {
-    await storeCeoBriefing(await computeCeoBriefing());
+    const briefing = await computeCeoBriefing();
+    await storeCeoBriefing(briefing);
     notes.push("CEO synthesised the morning briefing from the team's reports.");
+    // Share a concise briefing in Team Chat so the whole company sees the plan.
+    try {
+      const lines = ["🤖 Vetri — Morning briefing", briefing.headline, briefing.focus ? `Today's focus: ${briefing.focus}` : ""].filter(Boolean);
+      await postSystemMessage(lines.join("\n"));
+    } catch (err) {
+      console.error("[agent] chat briefing post failed", err);
+    }
   } catch (err) {
     console.error("[agent] CEO briefing refresh failed", err);
   }

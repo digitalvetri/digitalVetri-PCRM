@@ -32,7 +32,18 @@ export async function getEmployeeSelf(userId: string) {
     prisma.employeeProfile.findUnique({ where: { userId } }),
     prisma.projectAssignment.findMany({
       where: { userId },
-      select: { id: true, role: true, assignedAt: true, project: { select: SAFE_PROJECT } },
+      select: {
+        id: true,
+        role: true,
+        assignedAt: true,
+        project: {
+          select: {
+            ...SAFE_PROJECT,
+            company: { select: { name: true } },
+            assignments: { select: { role: true, user: { select: { id: true, name: true } } }, orderBy: { assignedAt: "asc" } },
+          },
+        },
+      },
       orderBy: { assignedAt: "desc" },
     }),
     prisma.attendance.findUnique({ where: { userId_date: { userId, date: istStartOfDay() } } }),

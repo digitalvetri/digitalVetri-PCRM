@@ -45,6 +45,8 @@ export default async function MePage() {
         status: a.project.status,
         startDate: a.project.startDate?.toISOString() ?? null,
         dueDate: a.project.dueDate?.toISOString() ?? null,
+        company: a.project.company?.name ?? null,
+        team: a.project.assignments.map((m) => ({ id: m.user.id, name: m.user.name, role: m.role })),
       },
     })),
     todayAttendance: self.todayAttendance

@@ -29,3 +29,16 @@ export async function sendMessage(userId: string, body: string) {
   if (text.length > 2000) throw new ApiError(400, "Message is too long (2000 characters max).");
   return prisma.chatMessage.create({ data: { userId, body: text }, select: CHAT_SELECT });
 }
+
+/**
+ * Post an automated message (e.g. Vetri's morning briefing) into the team
+ * channel, attributed to the founder/admin account. Best-effort — returns null
+ * if there's no admin to attribute it to.
+ */
+export async function postSystemMessage(body: string) {
+  const admin = await prisma.user.findFirst({ where: { role: "ADMIN" }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  if (!admin) return null;
+  const text = body.trim().slice(0, 2000);
+  if (!text) return null;
+  return prisma.chatMessage.create({ data: { userId: admin.id, body: text } });
+}
