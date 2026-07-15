@@ -284,6 +284,62 @@ export async function listEmployees() {
   });
 }
 
+/** Admin edits an employee's core profile (name, code, designation, dept, phone, base salary, join date, active). */
+export async function updateEmployee(
+  employeeId: string,
+  input: {
+    name?: string;
+    employeeCode?: string;
+    designation?: string | null;
+    department?: string | null;
+    phone?: string | null;
+    baseSalary?: number;
+    joinDate?: Date | null;
+    isActive?: boolean;
+  }
+) {
+  const emp = await prisma.user.findFirst({ where: { id: employeeId, role: "EMPLOYEE" }, select: { id: true } });
+  if (!emp) throw new ApiError(404, "Employee not found.");
+  const opt = <T>(v: T | undefined) => (v === undefined ? undefined : v);
+  const clr = (v: string | null | undefined) => (v === undefined ? undefined : v?.trim() || null);
+  try {
+    return await prisma.user.update({
+      where: { id: employeeId },
+      data: {
+        name: input.name?.trim() || undefined,
+        isActive: opt(input.isActive),
+        employeeProfile: {
+          update: {
+            employeeCode: input.employeeCode?.trim() || undefined,
+            designation: clr(input.designation),
+            department: clr(input.department),
+            phone: clr(input.phone),
+            baseSalary: opt(input.baseSalary),
+            joinDate: opt(input.joinDate),
+          },
+        },
+      },
+      include: { employeeProfile: true },
+    });
+  } catch (e) {
+    const msg = e instanceof Error && e.message.includes("Unique") ? "That employee code is already used." : "database error";
+    throw new ApiError(400, `Couldn't update the employee: ${msg}`);
+  }
+}
+
+/** Admin resets an employee's login password (via Clerk). */
+export async function resetEmployeePassword(employeeId: string, newPassword: string) {
+  if (!newPassword || newPassword.length < 8) throw new ApiError(400, "Password must be at least 8 characters.");
+  const emp = await prisma.user.findFirst({ where: { id: employeeId, role: "EMPLOYEE" }, select: { clerkId: true } });
+  if (!emp?.clerkId) throw new ApiError(404, "Employee login not found.");
+  const client = await clerkClient();
+  try {
+    await client.users.updateUser(emp.clerkId, { password: newPassword });
+  } catch (e) {
+    throw new ApiError(400, `Couldn't reset the password: ${clerkErrorMessage(e)}`);
+  }
+}
+
 /** Admin assigns a task to an employee. */
 export async function assignTask(
   adminId: string,
@@ -383,9 +439,28 @@ export async function listProjects() {
       company: { select: { name: true } },
       assignments: { include: { user: { select: { id: true, name: true } } } },
       milestones: { select: { id: true, title: true, done: true, dueDate: true, order: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] },
+      notes: { select: { id: true, body: true, createdAt: true, author: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 20 },
       _count: { select: { tasks: true } },
     },
   });
+}
+
+/** Admin sets a project's workflow stage. */
+export async function adminSetProjectStage(projectId: string, stage: "PLANNING" | "IN_PROGRESS" | "REVIEW" | "COMPLETED") {
+  return prisma.project.update({ where: { id: projectId }, data: { stage }, select: { id: true, stage: true } });
+}
+
+/** Admin posts a note to any project. */
+export async function adminAddProjectNote(adminId: string, projectId: string, body: string) {
+  const text = body?.trim();
+  if (!text) throw new ApiError(400, "Note can't be empty.");
+  const proj = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+  if (!proj) throw new ApiError(404, "Project not found.");
+  return prisma.projectNote.create({ data: { projectId, authorId: adminId, body: text.slice(0, 4000) } });
+}
+
+export async function adminDeleteProjectNote(noteId: string) {
+  await prisma.projectNote.delete({ where: { id: noteId } });
 }
 
 // --- Milestones (admin) ---

@@ -24,6 +24,8 @@ interface EmployeeRow {
   code: string;
   designation: string | null;
   department: string | null;
+  phone: string | null;
+  baseSalary: number;
   joinDate: string | null;
 }
 interface ProjectRow {
@@ -33,10 +35,15 @@ interface ProjectRow {
   status: string;
   value: number | null;
   dueDate: string | null;
+  stage: string;
   assignments: { userId: string; name: string; role: string | null }[];
   milestones: { id: string; title: string; done: boolean; dueDate: string | null }[];
+  notes: { id: string; body: string; author: string; createdAt: string }[];
   taskCount: number;
 }
+
+const PROJECT_STAGES = ["PLANNING", "IN_PROGRESS", "REVIEW", "COMPLETED"] as const;
+const STAGE_LABEL: Record<string, string> = { PLANNING: "Planning", IN_PROGRESS: "In progress", REVIEW: "Review", COMPLETED: "Completed" };
 interface LeaveRow {
   id: string;
   employee: string;
@@ -597,6 +604,7 @@ function ManageEmployee({ employee, projects, onDone }: { employee: EmployeeRow;
   return (
     <div className="space-y-4 border-t bg-muted/20 p-4">
       <EmployeeDetail employeeId={employee.id} />
+      <EditEmployeePanel employee={employee} onDone={onDone} />
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <AssignTaskPanel employee={employee} projects={projects} onDone={onDone} />
         <AssignPanel employee={employee} projects={projects} onDone={onDone} />
@@ -604,6 +612,74 @@ function ManageEmployee({ employee, projects, onDone }: { employee: EmployeeRow;
         <ReviewPanel employee={employee} onDone={onDone} />
       </div>
     </div>
+  );
+}
+
+function EditEmployeePanel({ employee, onDone }: { employee: EmployeeRow; onDone: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [name, setName] = React.useState(employee.name);
+  const [code, setCode] = React.useState(employee.code);
+  const [designation, setDesignation] = React.useState(employee.designation ?? "");
+  const [department, setDepartment] = React.useState(employee.department ?? "");
+  const [phone, setPhone] = React.useState(employee.phone ?? "");
+  const [baseSalary, setBaseSalary] = React.useState(String(employee.baseSalary ?? 0));
+  const [joinDate, setJoinDate] = React.useState(employee.joinDate ? employee.joinDate.slice(0, 10) : "");
+  const [active, setActive] = React.useState(employee.active);
+  const [newPassword, setNewPassword] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await post(`/api/team/employees/${employee.id}`, {
+        name,
+        employeeCode: code,
+        designation: designation || null,
+        department: department || null,
+        phone: phone || null,
+        baseSalary: Number(baseSalary) || 0,
+        joinDate: joinDate || null,
+        isActive: active,
+        ...(newPassword ? { newPassword } : {}),
+      }, "PATCH");
+      toast.success("Employee updated");
+      setNewPassword("");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between text-left">
+          <CardTitle className="text-sm">Edit profile &amp; account</CardTitle>
+          <span className="text-xs text-primary">{open ? "Hide" : "Edit"}</span>
+        </button>
+      </CardHeader>
+      {open && (
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Full name" value={name} onChange={setName} />
+          <Field label="Employee code" value={code} onChange={setCode} />
+          <Field label="Designation" value={designation} onChange={setDesignation} />
+          <Field label="Department" value={department} onChange={setDepartment} />
+          <Field label="Phone" value={phone} onChange={setPhone} />
+          <Field label="Base salary (₹/mo)" type="number" value={baseSalary} onChange={setBaseSalary} />
+          <Field label="Join date" type="date" value={joinDate} onChange={setJoinDate} />
+          <Field label="Reset password" type="password" value={newPassword} onChange={setNewPassword} placeholder="Leave blank to keep" />
+          <div className="space-y-1.5">
+            <span className="block text-sm font-medium">Status</span>
+            <label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> {active ? "Active" : "Deactivated"}</label>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Button size="sm" onClick={save} disabled={busy || !name.trim() || !code.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save changes</Button>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
@@ -920,12 +996,70 @@ function ProjectsTab({ projects, employees }: { projects: ProjectRow[]; employee
                   )}
                 </div>
                 <AssignToProject projectId={p.id} employees={employees} onDone={() => router.refresh()} />
+                <ProjectStageControl projectId={p.id} stage={p.stage} onDone={() => router.refresh()} />
                 <MilestoneManager projectId={p.id} milestones={p.milestones} onDone={() => router.refresh()} />
+                <ProjectNotesManager projectId={p.id} notes={p.notes} onDone={() => router.refresh()} />
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ProjectStageControl({ projectId, stage, onDone }: { projectId: string; stage: string; onDone: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  async function set(s: string) {
+    setBusy(true);
+    try { await post(`/api/team/projects/${projectId}`, { stage: s }, "PATCH"); onDone(); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(false); }
+  }
+  const idx = PROJECT_STAGES.indexOf(stage as (typeof PROJECT_STAGES)[number]);
+  return (
+    <div className="rounded-lg border bg-muted/20 p-2.5">
+      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stage</span>
+      <div className="flex flex-wrap gap-1">
+        {PROJECT_STAGES.map((s, i) => (
+          <button key={s} onClick={() => set(s)} disabled={busy}
+            className={cn("rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+              i === idx ? "bg-gradient-to-r from-primary to-blue-600 text-white" : i < idx ? "bg-emerald-500/10 text-emerald-600" : "border text-muted-foreground hover:text-foreground")}>
+            {STAGE_LABEL[s]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProjectNotesManager({ projectId, notes, onDone }: { projectId: string; notes: ProjectRow["notes"]; onDone: () => void }) {
+  const [body, setBody] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setBusy(true);
+    try { await post(`/api/team/projects/${projectId}/notes`, { body }); setBody(""); onDone(); }
+    catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); } finally { setBusy(false); }
+  }
+  async function remove(id: string) { try { await post(`/api/team/project-notes/${id}`, {}, "DELETE"); onDone(); } catch { toast.error("Failed"); } }
+  return (
+    <div className="rounded-lg border bg-muted/20 p-2.5">
+      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes</span>
+      {notes.length > 0 && (
+        <ul className="mb-2 space-y-1.5">
+          {notes.slice(0, 5).map((n) => (
+            <li key={n.id} className="flex items-start justify-between gap-2 text-xs">
+              <span><span className="font-medium">{n.author}:</span> <span className="text-muted-foreground">{n.body}</span></span>
+              <button onClick={() => remove(n.id)} aria-label="Delete" className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-red-600"><X className="h-3 w-3" /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={add} className="flex gap-1.5">
+        <input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Post an update…" className="h-8 flex-1 rounded-md border bg-background px-2 text-xs" />
+        <Button size="sm" className="h-8" disabled={busy || !body.trim()}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}</Button>
+      </form>
     </div>
   );
 }

@@ -1,6 +1,8 @@
+import { z } from "zod";
 import { withApi } from "@/lib/api";
 import { requireUser } from "@/lib/rbac";
-import { getEmployeeAdminDetail } from "@/lib/hr";
+import { getEmployeeAdminDetail, updateEmployee, resetEmployeePassword } from "@/lib/hr";
+import { parseISTDate } from "@/lib/time";
 
 /** GET /api/team/employees/[id] — full per-employee view for an admin. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -25,5 +27,38 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       reviews: d.reviews.map((r) => ({ id: r.id, period: r.period, rating: r.rating, strengths: r.strengths, improvements: r.improvements })),
       projects: d.assignments.map((a) => ({ id: a.project.id, name: a.project.name, status: a.project.status })),
     };
+  });
+}
+
+const patchSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  employeeCode: z.string().min(1).max(40).optional(),
+  designation: z.string().max(80).optional().nullable(),
+  department: z.string().max(80).optional().nullable(),
+  phone: z.string().max(30).optional().nullable(),
+  baseSalary: z.number().min(0).optional(),
+  joinDate: z.string().optional().nullable(),
+  isActive: z.boolean().optional(),
+  newPassword: z.string().min(8).max(100).optional(),
+});
+
+/** PATCH /api/team/employees/[id] — edit profile and/or reset password (hr.manage). */
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  return withApi(async () => {
+    await requireUser("hr.manage");
+    const { id } = await params;
+    const b = patchSchema.parse(await req.json());
+    if (b.newPassword) await resetEmployeePassword(id, b.newPassword);
+    await updateEmployee(id, {
+      name: b.name,
+      employeeCode: b.employeeCode,
+      designation: b.designation,
+      department: b.department,
+      phone: b.phone,
+      baseSalary: b.baseSalary,
+      joinDate: b.joinDate === undefined ? undefined : b.joinDate ? parseISTDate(b.joinDate) : null,
+      isActive: b.isActive,
+    });
+    return { ok: true };
   });
 }

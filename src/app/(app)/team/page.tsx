@@ -49,6 +49,8 @@ export default async function TeamPage() {
     code: e.employeeProfile?.employeeCode ?? "—",
     designation: e.employeeProfile?.designation ?? null,
     department: e.employeeProfile?.department ?? null,
+    phone: e.employeeProfile?.phone ?? null,
+    baseSalary: e.employeeProfile?.baseSalary ?? 0,
     joinDate: e.employeeProfile?.joinDate?.toISOString() ?? null,
   }));
 
@@ -59,8 +61,10 @@ export default async function TeamPage() {
     status: p.status,
     value: p.value,
     dueDate: p.dueDate?.toISOString() ?? null,
+    stage: p.stage,
     assignments: p.assignments.map((a) => ({ userId: a.userId, name: a.user.name, role: a.role })),
     milestones: p.milestones.map((m) => ({ id: m.id, title: m.title, done: m.done, dueDate: m.dueDate?.toISOString() ?? null })),
+    notes: p.notes.map((n) => ({ id: n.id, body: n.body, author: n.author.name, createdAt: n.createdAt.toISOString() })),
     taskCount: p._count.tasks,
   }));
 
