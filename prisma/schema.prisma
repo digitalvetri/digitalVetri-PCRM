@@ -56,6 +56,7 @@ model User {
   timesheets          TimesheetEntry[]
   kbArticles          KbArticle[]
   goals               Goal[]              @relation("GoalOwner")
+  notifications       Notification[]
 
   @@index([clerkId])
   @@index([role])
@@ -128,6 +129,31 @@ enum GoalStatus {
   ACTIVE
   COMPLETED
   ARCHIVED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  LEAVE_APPROVED
+  LEAVE_REJECTED
+  ANNOUNCEMENT
+  GENERAL
+}
+
+/// In-app notifications for employees (task assigned, leave decision, announcement).
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(GENERAL)
+  title     String
+  body      String?
+  link      String? // a portal tab key (e.g. "tasks") the client can jump to
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
 }
 
 /// Employee goals / OKRs with measurable progress.

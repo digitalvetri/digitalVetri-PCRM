@@ -83,6 +83,7 @@ interface Data {
   timesheet: { id: string; projectId: string | null; date: string; hours: number; note: string | null }[];
   goals: { id: string; title: string; detail: string | null; target: number; current: number; unit: string | null; dueDate: string | null; status: string }[];
   holidays: { id: string; date: string; name: string }[];
+  notifications: { id: string; type: string; title: string; body: string | null; link: string | null; read: boolean; createdAt: string }[];
   leaveBalances: { type: string; allowance: number; used: number; remaining: number }[];
   articles: { id: string; title: string; category: string | null; author: string; updatedAt: string }[];
   performance: { attendanceRate: number | null; avgRating: number | null; projectCount: number; score: number; reviewCount: number };
@@ -263,7 +264,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <NotificationsBell items={attention} />
+            <NotificationsBell items={attention} notifications={data.notifications} onGoTo={setTab} />
             <div className="hidden text-right sm:block">
               <div className="text-sm font-medium leading-none">{name}</div>
               <div className="text-xs text-muted-foreground">{email}</div>
@@ -429,37 +430,76 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
 // Notifications bell
 // ---------------------------------------------------------------
 
-function NotificationsBell({ items }: { items: { label: string; onClick: () => void }[] }) {
+function NotificationsBell({ items, notifications, onGoTo }: { items: { label: string; onClick: () => void }[]; notifications: Data["notifications"]; onGoTo: (t: TabKey) => void }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
+  const unread = notifications.filter((n) => !n.read).length;
+  const dot = unread > 0 || items.length > 0;
+
   React.useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
+
+  async function markAllRead() {
+    try { await fetch("/api/me/notifications", { method: "POST" }); router.refresh(); } catch { /* best-effort */ }
+  }
+
+  const timeAgo = (iso: string) => {
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+  };
+
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)} aria-label="Notifications" className="relative rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted">
         <Bell className="h-5 w-5" />
-        {items.length > 0 && <span className="absolute right-1.5 top-1.5 flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" /><span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" /></span>}
+        {dot && <span className="absolute right-1 top-1 flex min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unread > 0 ? unread : ""}</span>}
       </button>
       {open && (
-        <div className="absolute right-0 top-11 z-30 w-72 overflow-hidden rounded-xl border bg-card shadow-lg">
-          <div className="border-b px-4 py-2.5 text-sm font-semibold">Notifications</div>
-          {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">You&apos;re all caught up 🎉</p>
-          ) : (
-            <ul className="divide-y">
-              {items.map((it, i) => (
-                <li key={i}>
-                  <button onClick={() => { it.onClick(); setOpen(false); }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted">
+        <div className="absolute right-0 top-11 z-30 w-80 overflow-hidden rounded-xl border bg-card shadow-card-lg">
+          <div className="flex items-center justify-between border-b px-4 py-2.5">
+            <span className="text-sm font-semibold">Notifications</span>
+            {unread > 0 && <button onClick={markAllRead} className="text-xs font-medium text-primary hover:underline">Mark all read</button>}
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto">
+            {items.length > 0 && (
+              <div className="border-b bg-amber-500/[0.04]">
+                {items.map((it, i) => (
+                  <button key={`a-${i}`} onClick={() => { it.onClick(); setOpen(false); }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" /> {it.label}
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                ))}
+              </div>
+            )}
+            {notifications.length === 0 && items.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">You&apos;re all caught up 🎉</p>
+            ) : (
+              <ul className="divide-y">
+                {notifications.map((n) => (
+                  <li key={n.id}>
+                    <button
+                      onClick={() => { if (n.link) onGoTo(n.link as TabKey); setOpen(false); }}
+                      className={cn("flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-muted", !n.read && "bg-primary/[0.03]")}
+                    >
+                      <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", n.read ? "bg-transparent" : "bg-primary")} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">{n.title}</span>
+                        {n.body && <span className="block truncate text-xs text-muted-foreground">{n.body}</span>}
+                        <span className="block text-[10px] text-muted-foreground">{timeAgo(n.createdAt)}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </div>

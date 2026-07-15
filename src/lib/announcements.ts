@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api-error";
+import { notifyMany } from "@/lib/notifications";
 
 /** Company announcements — posted by admins, visible to the whole company. */
 
@@ -25,7 +26,11 @@ export async function createAnnouncement(authorId: string, input: { title: strin
   const body = input.body?.trim();
   if (!title) throw new ApiError(400, "An announcement needs a title.");
   if (!body) throw new ApiError(400, "An announcement needs a message.");
-  return prisma.announcement.create({ data: { authorId, title, body, pinned: input.pinned ?? false }, select: SELECT });
+  const created = await prisma.announcement.create({ data: { authorId, title, body, pinned: input.pinned ?? false }, select: SELECT });
+  // Notify the whole team.
+  const employees = await prisma.user.findMany({ where: { role: "EMPLOYEE", isActive: true }, select: { id: true } });
+  await notifyMany(employees.map((e) => e.id), { type: "ANNOUNCEMENT", title: "New announcement", body: title, link: "dashboard" });
+  return created;
 }
 
 export async function deleteAnnouncement(id: string) {

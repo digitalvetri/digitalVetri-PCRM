@@ -3,6 +3,7 @@ import type { LeaveType, ProjectStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api-error";
 import { istStartOfDay } from "@/lib/time";
+import { notify } from "@/lib/notifications";
 
 /**
  * HRMS server helpers.
@@ -235,7 +236,7 @@ export async function assignTask(
   if (!emp) throw new ApiError(400, "Not an employee.");
   if (!input.title?.trim()) throw new ApiError(400, "A task needs a title.");
   const pr = (input.priority ?? "").toUpperCase();
-  return prisma.task.create({
+  const task = await prisma.task.create({
     data: {
       title: input.title.trim(),
       description: input.description?.trim() || undefined,
@@ -245,6 +246,8 @@ export async function assignTask(
       priority: pr === "URGENT" || pr === "HIGH" || pr === "LOW" ? (pr as "URGENT" | "HIGH" | "LOW") : "MEDIUM",
     },
   });
+  await notify(employeeId, { type: "TASK_ASSIGNED", title: "New task assigned", body: task.title, link: "tasks" });
+  return task;
 }
 
 /** Full per-employee view for an admin: attendance, tasks, leave, salary, performance. */
@@ -349,10 +352,18 @@ export async function listLeaveRequests() {
 }
 
 export async function reviewLeave(id: string, reviewerId: string, status: "APPROVED" | "REJECTED", note?: string | null) {
-  return prisma.leaveRequest.update({
+  const leave = await prisma.leaveRequest.update({
     where: { id },
     data: { status, reviewedById: reviewerId, reviewedAt: new Date(), reviewNote: note || undefined },
+    select: { userId: true, type: true },
   });
+  await notify(leave.userId, {
+    type: status === "APPROVED" ? "LEAVE_APPROVED" : "LEAVE_REJECTED",
+    title: status === "APPROVED" ? "Leave approved" : "Leave rejected",
+    body: `Your ${leave.type.toLowerCase()} leave was ${status.toLowerCase()}.`,
+    link: "leave",
+  });
+  return leave;
 }
 
 // --- Salary ---

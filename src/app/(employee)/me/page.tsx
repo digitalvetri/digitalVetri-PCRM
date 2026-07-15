@@ -5,6 +5,7 @@ import { listTimesheet } from "@/lib/timesheet";
 import { listGoals } from "@/lib/goals";
 import { upcomingHolidays, getLeaveBalances } from "@/lib/holidays";
 import { listArticles } from "@/lib/kb";
+import { listNotifications } from "@/lib/notifications";
 import { EmployeePortal } from "@/components/employee/employee-portal";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function MePage() {
   const user = await getCurrentUser();
   if (!user) return null; // layout already redirects; satisfies types
 
-  const [self, performance, announcements, timesheet, goals, holidays, leaveBalances, articles] = await Promise.all([
+  const [self, performance, announcements, timesheet, goals, holidays, leaveBalances, articles, notifications] = await Promise.all([
     getEmployeeSelf(user.id),
     getEmployeePerformance(user.id),
     listAnnouncements(10),
@@ -23,6 +24,7 @@ export default async function MePage() {
     upcomingHolidays(8),
     getLeaveBalances(user.id),
     listArticles(),
+    listNotifications(user.id),
   ]);
 
   const data = {
@@ -123,6 +125,7 @@ export default async function MePage() {
       status: g.status,
     })),
     holidays: holidays.map((h) => ({ id: h.id, date: h.date.toISOString(), name: h.name })),
+    notifications: notifications.map((n) => ({ id: n.id, type: n.type, title: n.title, body: n.body, link: n.link, read: n.read, createdAt: n.createdAt.toISOString() })),
     leaveBalances,
     articles: articles.map((a) => ({
       id: a.id,
