@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   BarChart3,
@@ -85,6 +86,7 @@ interface Data {
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
+const initials = (name: string) => name.split(" ").map((x) => x[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
 const STATUS_TONE: Record<string, string> = {
   APPROVED: "text-emerald-600 border-emerald-500/40",
@@ -186,7 +188,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
   if (pendingLeave > 0) attention.push({ label: `${pendingLeave} leave request pending`, onClick: () => setTab("leave") });
 
   const navList = (
-    <nav className="flex flex-col gap-0.5 px-3">
+    <nav className="flex flex-col gap-1 px-3">
       {nav.map((n) => {
         const active = tab === n.key;
         return (
@@ -194,14 +196,17 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
             key={n.key}
             onClick={() => { setTab(n.key); setSidebarOpen(false); }}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
-              active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-white/5 hover:text-white",
+              "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200",
+              active
+                ? "bg-gradient-to-r from-primary to-blue-600 text-white shadow-lg shadow-primary/25"
+                : "text-sidebar-foreground hover:bg-white/[0.06] hover:text-white",
             )}
           >
-            <span className="shrink-0">{n.icon}</span>
+            {active && <span className="absolute -left-3 top-1/2 h-5 -translate-y-1/2 rounded-r-full bg-white" style={{ width: 3 }} />}
+            <span className={cn("shrink-0 transition-transform duration-200", active ? "" : "group-hover:scale-110")}>{n.icon}</span>
             <span className="truncate">{n.label}</span>
             {n.badge ? (
-              <span className={cn("ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold", active ? "bg-white/20 text-white" : "bg-white/10 text-sidebar-foreground")}>{n.badge}</span>
+              <span className={cn("ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-semibold", active ? "bg-white/25 text-white" : "bg-primary/20 text-white/80")}>{n.badge}</span>
             ) : null}
           </button>
         );
@@ -217,9 +222,12 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           <Logo tileSize={32} subtitle="Employee" />
         </div>
         <div className="flex-1 overflow-y-auto py-3">{navList}</div>
-        <div className="border-t border-sidebar-border/60 px-4 py-3 text-xs text-sidebar-foreground">
-          <div className="truncate font-medium text-white">{name}</div>
-          <div className="truncate">{data.profile?.designation ?? "Team member"}</div>
+        <div className="flex items-center gap-3 border-t border-sidebar-border/60 px-4 py-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-500 text-xs font-bold text-white shadow-lg shadow-primary/30">{initials(name)}</span>
+          <div className="min-w-0 text-xs text-sidebar-foreground">
+            <div className="truncate font-medium text-white">{name}</div>
+            <div className="truncate">{data.profile?.designation ?? "Team member"}</div>
+          </div>
         </div>
       </aside>
 
@@ -257,8 +265,16 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6">
-          <div className="mx-auto min-w-0 max-w-6xl space-y-5 animate-fade-in">
+        <main className="relative flex-1 p-4 sm:p-6">
+          {/* Ambient brand glow behind the content */}
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-72 bg-gradient-to-b from-primary/[0.07] via-primary/[0.02] to-transparent" />
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+            className="relative mx-auto min-w-0 max-w-6xl space-y-5"
+          >
         {tab === "dashboard" && (
           <DashboardTab
             first={first}
@@ -373,8 +389,8 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           </>
         )}
 
-            <FooterQuote />
-          </div>
+          </motion.div>
+          <div className="relative mx-auto mt-5 max-w-6xl"><FooterQuote /></div>
         </main>
       </div>
     </div>
@@ -485,33 +501,47 @@ function DashboardTab({
   return (
     <>
       {/* Hero */}
-      <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="relative bg-gradient-to-br from-primary/90 to-blue-700 p-6 text-white">
-          <p className="text-sm text-blue-100">{greeting},</p>
-          <h1 className="text-2xl font-bold">{first} 👋</h1>
-          {data.profile && (
-            <p className="mt-1 text-sm text-blue-100/90">
-              {data.profile.designation ?? "Team member"}
-              {data.profile.department ? ` · ${data.profile.department}` : ""} · {data.profile.employeeCode}
-            </p>
-          )}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+      <Card className="overflow-hidden border-0 shadow-card-lg">
+        <div className="bg-brand-mesh relative overflow-hidden p-6 text-white sm:p-7">
+          {/* decorative orbs */}
+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+          <div aria-hidden className="pointer-events-none absolute -bottom-20 right-24 h-40 w-40 rounded-full bg-white/[0.07] blur-2xl" />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-lg font-bold backdrop-blur-sm ring-1 ring-white/20">{initials(first + " " + (data.profile?.employeeCode ?? ""))}</span>
+              <div>
+                <p className="text-sm text-white/70">{greeting},</p>
+                <h1 className="text-2xl font-bold leading-tight sm:text-3xl">{first} 👋</h1>
+                {data.profile && (
+                  <p className="mt-0.5 text-sm text-white/70">
+                    {data.profile.designation ?? "Team member"}
+                    {data.profile.department ? ` · ${data.profile.department}` : ""} · {data.profile.employeeCode}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2 text-right text-xs text-white/80 ring-1 ring-white/15 backdrop-blur-sm">
+              <div className="font-semibold text-white">{new Date().toLocaleDateString("en-IN", { weekday: "long" })}</div>
+              <div>{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long" })}</div>
+            </div>
+          </div>
+          <div className="relative mt-5 flex flex-wrap items-center gap-3">
             {!checkedIn ? (
-              <Button onClick={() => onCheck("checkin")} disabled={busy !== null} variant="secondary">
+              <Button onClick={() => onCheck("checkin")} disabled={busy !== null} className="bg-white font-semibold text-primary shadow-lg hover:bg-white/90">
                 {busy === "checkin" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                 <span className="ml-1">Check in</span>
               </Button>
             ) : !checkedOut ? (
-              <Button onClick={() => onCheck("checkout")} disabled={busy !== null} variant="secondary">
+              <Button onClick={() => onCheck("checkout")} disabled={busy !== null} className="bg-white font-semibold text-primary shadow-lg hover:bg-white/90">
                 {busy === "checkout" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                 <span className="ml-1">Check out</span>
               </Button>
             ) : (
-              <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium">Day complete ✓</span>
+              <span className="rounded-full bg-white/20 px-3 py-1.5 text-sm font-medium ring-1 ring-white/20">Day complete ✓</span>
             )}
             {checkedIn && (
-              <span className="text-xs text-blue-100">
-                <Clock className="mr-1 inline h-3 w-3" /> In {fmtTime(data.todayAttendance?.checkIn ?? null)}
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/90 ring-1 ring-white/15">
+                <Clock className="h-3 w-3" /> In {fmtTime(data.todayAttendance?.checkIn ?? null)}
                 {checkedOut ? ` · Out ${fmtTime(data.todayAttendance?.checkOut ?? null)}` : ""}
               </span>
             )}
@@ -761,8 +791,8 @@ function TodaySchedule({ checkIn, tasks, onGoTo }: { checkIn: string | null; tas
 
 function QuickAction({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 rounded-xl border bg-card p-4 text-center transition-all hover:border-primary/40 hover:shadow-sm">
-      <span className="text-primary">{icon}</span>
+    <button onClick={onClick} className="group flex flex-col items-center gap-2.5 rounded-2xl border bg-card p-4 text-center transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card">
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary/10 to-blue-500/10 text-primary transition-all duration-300 group-hover:from-primary group-hover:to-blue-500 group-hover:text-white group-hover:shadow-lg group-hover:shadow-primary/30">{icon}</span>
       <span className="text-xs font-medium">{label}</span>
     </button>
   );
@@ -1541,7 +1571,7 @@ function ReportsTab({ data }: { data: Data }) {
 function PageTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">{icon}</span>
+      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-500 text-white shadow-lg shadow-primary/25">{icon}</span>
       <div>
         <h1 className="text-xl font-bold leading-tight">{title}</h1>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
@@ -1636,27 +1666,25 @@ function MetricCard({
   tone?: "amber" | "emerald" | "primary" | "muted";
   progress?: number;
 }) {
-  const toneCls =
-    tone === "amber" ? "bg-amber-500/10 text-amber-600" :
-    tone === "emerald" ? "bg-emerald-500/10 text-emerald-600" :
-    tone === "muted" ? "bg-muted text-muted-foreground" :
-    "bg-primary/10 text-primary";
+  const iconCls =
+    tone === "amber" ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-amber-500/30" :
+    tone === "emerald" ? "bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-emerald-500/30" :
+    tone === "muted" ? "bg-gradient-to-br from-slate-300 to-slate-400 text-white shadow-slate-400/30" :
+    "bg-gradient-to-br from-primary to-blue-500 text-white shadow-primary/30";
   const barCls =
-    tone === "amber" ? "bg-amber-500" :
-    tone === "emerald" ? "bg-emerald-500" :
-    "bg-primary";
+    tone === "amber" ? "bg-gradient-to-r from-amber-400 to-orange-500" :
+    tone === "emerald" ? "bg-gradient-to-r from-emerald-400 to-teal-500" :
+    "bg-gradient-to-r from-primary to-blue-500";
   return (
-    <Card className="shadow-sm">
+    <Card className="group relative overflow-hidden shadow-card transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card-lg">
       <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", toneCls)}>{icon}</span>
-        </div>
+        <span className={cn("flex h-10 w-10 items-center justify-center rounded-xl shadow-lg", iconCls)}>{icon}</span>
         <div className="mt-3 text-2xl font-bold tabular-nums leading-none">{value}</div>
-        <div className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
         {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
         {progress != null && (
-          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">
-            <div className={cn("h-full rounded-full transition-all", barCls)} style={{ width: `${Math.min(100, progress)}%` }} />
+          <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className={cn("h-full rounded-full transition-all duration-700", barCls)} style={{ width: `${Math.min(100, progress)}%` }} />
           </div>
         )}
       </CardContent>
