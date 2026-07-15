@@ -11,6 +11,10 @@ import {
   CircleDot,
   Clock,
   LayoutDashboard,
+  ChevronLeft,
+  ChevronRight,
+  Columns3,
+  List,
   ListChecks,
   LogIn,
   LogOut,
@@ -579,6 +583,7 @@ function TasksCard({
   doneCount: number;
 }) {
   const [filter, setFilter] = React.useState<"open" | "all">("open");
+  const [view, setView] = React.useState<"list" | "board">("list");
   const shown = filter === "open" ? tasks.filter((t) => t.status !== "DONE") : tasks;
 
   return (
@@ -589,10 +594,18 @@ function TasksCard({
             <span className="text-primary"><ListChecks className="h-4 w-4" /></span> My Tasks
             <span className="text-sm font-normal text-muted-foreground">{doneCount}/{tasks.length} done</span>
           </CardTitle>
-          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 text-xs">
-            {(["open", "all"] as const).map((f) => (
-              <button key={f} onClick={() => setFilter(f)} className={cn("rounded-md px-2.5 py-1 font-medium capitalize transition-colors", filter === f ? "bg-background shadow-sm" : "text-muted-foreground")}>{f}</button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+              <button onClick={() => setView("list")} className={cn("flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors", view === "list" ? "bg-background shadow-sm" : "text-muted-foreground")}><List className="h-3.5 w-3.5" /> List</button>
+              <button onClick={() => setView("board")} className={cn("flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors", view === "board" ? "bg-background shadow-sm" : "text-muted-foreground")}><Columns3 className="h-3.5 w-3.5" /> Board</button>
+            </div>
+            {view === "list" && (
+              <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 text-xs">
+                {(["open", "all"] as const).map((f) => (
+                  <button key={f} onClick={() => setFilter(f)} className={cn("rounded-md px-2.5 py-1 font-medium capitalize transition-colors", filter === f ? "bg-background shadow-sm" : "text-muted-foreground")}>{f}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         {tasks.length > 0 && (
@@ -603,7 +616,9 @@ function TasksCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <AddTaskRow post={post} onAdd={onAdd} />
-        {shown.length === 0 ? (
+        {view === "board" ? (
+          <KanbanBoard tasks={tasks} busy={busy} onStatus={onStatus} />
+        ) : shown.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             {filter === "open" ? "No open tasks — you're all caught up! 🎉" : "No tasks yet. Add one above or your manager will assign them."}
           </p>
@@ -643,6 +658,61 @@ function TasksCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+const BOARD_COLUMNS: { key: "TODO" | "IN_PROGRESS" | "DONE"; label: string; dot: string }[] = [
+  { key: "TODO", label: "To do", dot: "bg-muted-foreground/50" },
+  { key: "IN_PROGRESS", label: "In progress", dot: "bg-amber-500" },
+  { key: "DONE", label: "Done", dot: "bg-emerald-500" },
+];
+
+function KanbanBoard({ tasks, busy, onStatus }: { tasks: TaskItem[]; busy: string | null; onStatus: (id: string, status: "TODO" | "IN_PROGRESS" | "DONE") => void }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {BOARD_COLUMNS.map((col) => {
+        const items = tasks.filter((t) => (col.key === "TODO" ? t.status === "TODO" : t.status === col.key));
+        const prev = col.key === "IN_PROGRESS" ? "TODO" : col.key === "DONE" ? "IN_PROGRESS" : null;
+        const next = col.key === "TODO" ? "IN_PROGRESS" : col.key === "IN_PROGRESS" ? "DONE" : null;
+        return (
+          <div key={col.key} className="rounded-xl border bg-muted/20 p-2">
+            <div className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <span className={cn("h-2 w-2 rounded-full", col.dot)} /> {col.label}
+              <span className="ml-auto rounded-full bg-background px-1.5 py-0.5 text-[10px]">{items.length}</span>
+            </div>
+            <div className="space-y-2">
+              {items.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">—</p>
+              ) : (
+                items.map((t) => {
+                  const loading = busy === `task-${t.id}`;
+                  return (
+                    <div key={t.id} className="rounded-lg border bg-card p-2.5 shadow-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className={cn("text-sm font-medium leading-snug", col.key === "DONE" && "text-muted-foreground line-through")}>{t.title}</span>
+                        {t.priority && t.priority !== "MEDIUM" && <Badge variant="outline" className={cn("shrink-0 text-[9px]", PRIORITY_TONE[t.priority])}>{t.priority}</Badge>}
+                      </div>
+                      {t.dueDate && <p className="mt-1 text-[11px] text-muted-foreground"><CalendarDays className="mr-1 inline h-3 w-3" />{fmtDate(t.dueDate)}</p>}
+                      <div className="mt-2 flex items-center justify-between">
+                        {prev ? (
+                          <button onClick={() => onStatus(t.id, prev)} disabled={loading} aria-label="Move back" className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+                        ) : <span />}
+                        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                        {next ? (
+                          <button onClick={() => onStatus(t.id, next)} disabled={loading} aria-label="Move forward" className="rounded p-1 text-primary hover:bg-primary/10 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+                        ) : (
+                          <button onClick={() => onStatus(t.id, "TODO")} disabled={loading} aria-label="Reopen" className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" /></button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
