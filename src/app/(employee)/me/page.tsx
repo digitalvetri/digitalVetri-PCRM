@@ -49,8 +49,11 @@ export default async function MePage() {
         startDate: a.project.startDate?.toISOString() ?? null,
         dueDate: a.project.dueDate?.toISOString() ?? null,
         company: a.project.company?.name ?? null,
+        stage: a.project.stage,
         team: a.project.assignments.map((m) => ({ id: m.user.id, name: m.user.name, role: m.role })),
         milestones: a.project.milestones.map((ms) => ({ id: ms.id, title: ms.title, done: ms.done, dueDate: ms.dueDate?.toISOString() ?? null })),
+        notes: a.project.notes.map((n) => ({ id: n.id, body: n.body, author: n.author.name, authorId: n.author.id, createdAt: n.createdAt.toISOString() })),
+        projectTasks: a.project.tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, dueDate: t.dueDate?.toISOString() ?? null, assignee: t.assignedTo?.name ?? null, assigneeId: t.assignedTo?.id ?? null })),
       },
     })),
     todayAttendance: self.todayAttendance
@@ -142,5 +145,5 @@ export default async function MePage() {
     performance,
   };
 
-  return <EmployeePortal name={user.name} email={user.email} data={data} />;
+  return <EmployeePortal name={user.name} email={user.email} userId={user.id} data={data} />;
 }

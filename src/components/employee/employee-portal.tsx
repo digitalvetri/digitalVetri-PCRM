@@ -71,8 +71,11 @@ interface Data {
       startDate: string | null;
       dueDate: string | null;
       company: string | null;
+      stage: string;
       team: { id: string; name: string; role: string | null }[];
       milestones: { id: string; title: string; done: boolean; dueDate: string | null }[];
+      notes: { id: string; body: string; author: string; authorId: string; createdAt: string }[];
+      projectTasks: { id: string; title: string; status: string; priority: string; dueDate: string | null; assignee: string | null; assigneeId: string | null }[];
     };
   }[];
   todayAttendance: { checkIn: string | null; checkOut: string | null; status: string } | null;
@@ -123,7 +126,7 @@ const QUOTES = [
 
 type TabKey = "dashboard" | "assistant" | "tasks" | "timesheet" | "calendar" | "attendance" | "projects" | "goals" | "knowledge" | "directory" | "chat" | "leave" | "payslips" | "reviews" | "reports" | "settings";
 
-export function EmployeePortal({ name, email, data }: { name: string; email: string; data: Data }) {
+export function EmployeePortal({ name, email, userId, data }: { name: string; email: string; userId: string; data: Data }) {
   const router = useRouter();
   const [tab, setTab] = React.useState<TabKey>("dashboard");
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -347,7 +350,7 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
         {tab === "projects" && (
           <>
             <PageTitle icon={<Briefcase className="h-5 w-5" />} title="Projects" subtitle="What you're assigned to." />
-            <ProjectsSection assignments={data.assignments} timesheet={data.timesheet} tasks={data.tasks} />
+            <ProjectsSection assignments={data.assignments} timesheet={data.timesheet} userId={userId} onChange={() => router.refresh()} />
           </>
         )}
 
@@ -1101,29 +1104,41 @@ function timelineProgress(start: string | null, due: string | null): number | nu
   return Math.max(0, Math.min(100, Math.round(((Date.now() - s) / (e - s)) * 100)));
 }
 
-function ProjectsSection({ assignments, timesheet, tasks }: { assignments: Data["assignments"]; timesheet: Data["timesheet"]; tasks: TaskItem[] }) {
+const STAGES: { key: string; label: string }[] = [
+  { key: "PLANNING", label: "Planning" },
+  { key: "IN_PROGRESS", label: "In progress" },
+  { key: "REVIEW", label: "Review" },
+  { key: "COMPLETED", label: "Completed" },
+];
+
+function ProjectsSection({ assignments, timesheet, userId, onChange }: { assignments: Data["assignments"]; timesheet: Data["timesheet"]; userId: string; onChange: () => void }) {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const active = assignments.find((a) => a.project.id === openId);
 
   if (assignments.length === 0) return <Card className="shadow-sm"><CardContent className="py-8"><Empty>No projects assigned yet.</Empty></CardContent></Card>;
 
-  if (active) return <ProjectDetail assignment={active} timesheet={timesheet} tasks={tasks.filter((t) => t.projectId === active.project.id)} onBack={() => setOpenId(null)} />;
+  if (active) return <ProjectDetail assignment={active} timesheet={timesheet} userId={userId} onBack={() => setOpenId(null)} onChange={onChange} />;
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {assignments.map((a) => {
         const health = projectHealth(a.project.status, a.project.dueDate);
+        const stageIdx = STAGES.findIndex((s) => s.key === a.project.stage);
+        const openTasks = a.project.projectTasks.filter((t) => t.status !== "DONE" && t.status !== "CANCELLED").length;
         return (
-          <button key={a.id} onClick={() => setOpenId(a.project.id)} className="rounded-xl border bg-card p-4 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md">
+          <button key={a.id} onClick={() => setOpenId(a.project.id)} className="rounded-2xl border bg-card p-4 text-left shadow-card transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card-lg">
             <div className="flex items-start justify-between gap-2">
               <p className="font-medium">{a.project.name}</p>
-              <Badge variant="outline" className={cn("text-[10px]", STATUS_TONE[a.project.status])}>{a.project.status}</Badge>
+              <Badge variant="outline" className="border-primary/30 text-[10px] text-primary">{STAGES[stageIdx]?.label ?? a.project.stage}</Badge>
             </div>
             {a.project.company && <p className="text-xs text-muted-foreground">{a.project.company}</p>}
-            {a.project.description && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{a.project.description}</p>}
+            {/* stage progress */}
+            <div className="mt-3 flex gap-1">
+              {STAGES.map((s, i) => <span key={s.key} className={cn("h-1.5 flex-1 rounded-full", i <= stageIdx ? "bg-primary" : "bg-muted")} />)}
+            </div>
             <div className="mt-3 flex items-center justify-between text-xs">
               <span className={cn("font-medium", health.tone)}>● {health.label}</span>
-              <span className="text-muted-foreground">{a.project.team.length} member{a.project.team.length !== 1 ? "s" : ""} · View →</span>
+              <span className="text-muted-foreground">{openTasks} open · {a.project.team.length} member{a.project.team.length !== 1 ? "s" : ""} →</span>
             </div>
           </button>
         );
@@ -1132,108 +1147,169 @@ function ProjectsSection({ assignments, timesheet, tasks }: { assignments: Data[
   );
 }
 
-function ProjectDetail({ assignment, timesheet, tasks, onBack }: { assignment: Data["assignments"][number]; timesheet: Data["timesheet"]; tasks: TaskItem[]; onBack: () => void }) {
+const BOARD_COLS: { key: string; label: string; tone: string }[] = [
+  { key: "TODO", label: "To do", tone: "text-muted-foreground" },
+  { key: "IN_PROGRESS", label: "In progress", tone: "text-amber-600" },
+  { key: "DONE", label: "Done", tone: "text-emerald-600" },
+];
+
+function ProjectDetail({ assignment, timesheet, userId, onBack, onChange }: { assignment: Data["assignments"][number]; timesheet: Data["timesheet"]; userId: string; onBack: () => void; onChange: () => void }) {
   const p = assignment.project;
   const health = projectHealth(p.status, p.dueDate);
   const progress = timelineProgress(p.startDate, p.dueDate);
   const myHours = timesheet.filter((t) => t.projectId === p.id).reduce((s, t) => s + t.hours, 0);
   const msDone = p.milestones.filter((m) => m.done).length;
   const msPct = p.milestones.length ? Math.round((msDone / p.milestones.length) * 100) : 0;
+  const stageIdx = STAGES.findIndex((s) => s.key === p.stage);
+  const [busy, setBusy] = React.useState<string | null>(null);
+
+  async function call(url: string, body?: unknown, method = "PATCH") {
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? "Failed");
+    return json;
+  }
+
+  async function setStage(stage: string) {
+    setBusy("stage");
+    try { await call(`/api/me/projects/${p.id}/stage`, { stage }); toast.success(`Stage → ${STAGES.find((s) => s.key === stage)?.label}`); onChange(); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(null); }
+  }
+  async function toggleMs(id: string) {
+    setBusy(`ms-${id}`);
+    try { await call(`/api/me/milestones/${id}`, {}); onChange(); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(null); }
+  }
+  async function setTaskStatus(id: string, status: string) {
+    setBusy(`t-${id}`);
+    try { await call(`/api/me/tasks/${id}`, { status }); onChange(); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(null); }
+  }
 
   return (
     <div className="space-y-4">
       <Button size="sm" variant="ghost" onClick={onBack}><ChevronLeft className="h-4 w-4" /> All projects</Button>
 
-      <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="bg-gradient-to-br from-primary/90 to-blue-700 p-6 text-white">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+      <Card className="overflow-hidden border-0 shadow-card-lg">
+        <div className="bg-brand-mesh relative overflow-hidden p-6 text-white">
+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-white/10 blur-2xl" />
+          <div className="relative flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-2xl font-bold">{p.name}</h2>
-              {p.company && <p className="mt-0.5 text-sm text-blue-100">{p.company}</p>}
+              {p.company && <p className="mt-0.5 text-sm text-white/70">{p.company}</p>}
+              <p className="mt-2 text-sm font-medium text-white/90">● {health.label}{assignment.role ? ` · Your role: ${assignment.role}` : ""}</p>
             </div>
-            <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium">{p.status}</span>
+            <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-medium ring-1 ring-white/20">{p.status}</span>
           </div>
-          <p className={cn("mt-3 text-sm font-medium text-white/90")}>● {health.label}{assignment.role ? ` · Your role: ${assignment.role}` : ""}</p>
         </div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+      {/* Stage pipeline */}
+      <Card className="shadow-card">
+        <CardHeader className="pb-3"><CardTitle className="text-base">Project stage</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-2">
+            {STAGES.map((s, i) => {
+              const state = i < stageIdx ? "done" : i === stageIdx ? "current" : "todo";
+              return (
+                <React.Fragment key={s.key}>
+                  <button
+                    onClick={() => setStage(s.key)}
+                    disabled={busy !== null}
+                    className={cn(
+                      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
+                      state === "current" ? "border-transparent bg-gradient-to-r from-primary to-blue-600 text-white shadow-lg shadow-primary/25"
+                      : state === "done" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
+                      : "text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                    )}
+                  >
+                    {state === "done" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className={cn("flex h-4 w-4 items-center justify-center rounded-full text-[9px]", state === "current" ? "bg-white/25" : "bg-muted")}>{i + 1}</span>}
+                    {s.label}
+                  </button>
+                  {i < STAGES.length - 1 && <span className={cn("h-px w-4", i < stageIdx ? "bg-emerald-400" : "bg-border")} />}
+                </React.Fragment>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">Tap a stage to move the project. Everyone on the team sees the change.</p>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-4">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3"><CardTitle className="text-base">Overview</CardTitle></CardHeader>
+          {/* Task board */}
+          <Card className="shadow-card">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base"><Columns3 className="h-4 w-4 text-primary" /> Task board</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">{p.description || "No description provided for this project."}</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><div className="text-xs uppercase text-muted-foreground">Start</div><div className="font-medium">{fmtDate(p.startDate)}</div></div>
-                <div><div className="text-xs uppercase text-muted-foreground">Due</div><div className="font-medium">{fmtDate(p.dueDate)}</div></div>
+              <ProjectAddTask projectId={p.id} onChange={onChange} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                {BOARD_COLS.map((col) => {
+                  const items = p.projectTasks.filter((t) => t.status === col.key);
+                  return (
+                    <div key={col.key} className="rounded-xl border bg-muted/20 p-2">
+                      <div className={cn("mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide", col.tone)}>
+                        <span>{col.label}</span><span>{items.length}</span>
+                      </div>
+                      <div className="space-y-2">
+                        {items.length === 0 ? <p className="px-1 py-2 text-xs text-muted-foreground">—</p> : items.map((t) => {
+                          const mine = t.assigneeId === userId;
+                          const loading = busy === `t-${t.id}`;
+                          return (
+                            <div key={t.id} className="rounded-lg border bg-card p-2.5 shadow-sm">
+                              <div className="flex items-start justify-between gap-1.5">
+                                <span className="text-sm font-medium leading-snug">{t.title}</span>
+                                {t.priority !== "MEDIUM" && <span className={cn("mt-0.5 h-2 w-2 shrink-0 rounded-full", t.priority === "URGENT" || t.priority === "HIGH" ? "bg-red-500" : "bg-slate-300")} />}
+                              </div>
+                              <div className="mt-1.5 flex items-center justify-between">
+                                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                  {t.assignee && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-[8px] font-bold text-primary">{initials(t.assignee)}</span>}
+                                  {t.assignee ?? "Unassigned"}
+                                </span>
+                                {mine && (
+                                  <span className="flex gap-0.5">
+                                    {loading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <>
+                                      {t.status === "TODO" && <button onClick={() => setTaskStatus(t.id, "IN_PROGRESS")} className="rounded px-1 text-[10px] text-amber-600 hover:bg-amber-500/10">Start</button>}
+                                      {t.status !== "DONE" && <button onClick={() => setTaskStatus(t.id, "DONE")} className="rounded px-1 text-[10px] text-emerald-600 hover:bg-emerald-500/10">Done</button>}
+                                      {t.status === "DONE" && <button onClick={() => setTaskStatus(t.id, "TODO")} className="rounded p-0.5 text-muted-foreground hover:bg-muted"><RotateCcw className="h-3 w-3" /></button>}
+                                    </>}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              {progress != null && (
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground"><span>Timeline</span><span className="font-medium text-foreground">{progress}% elapsed</span></div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div className={cn("h-full rounded-full", progress >= 100 ? "bg-red-500" : progress > 80 ? "bg-amber-500" : "bg-primary")} style={{ width: `${progress}%` }} />
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 
-          {p.milestones.length > 0 && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Milestones</CardTitle>
-                  <span className="text-xs font-semibold text-muted-foreground">{msDone}/{p.milestones.length} · {msPct}%</span>
-                </div>
-                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div className={cn("h-full rounded-full", msPct === 100 ? "bg-emerald-500" : "bg-primary")} style={{ width: `${msPct}%` }} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {p.milestones.map((m) => (
-                    <li key={m.id} className="flex items-center gap-2.5 text-sm">
-                      {m.done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                      <span className={cn("flex-1", m.done && "text-muted-foreground line-through")}>{m.title}</span>
-                      {m.dueDate && <span className="text-xs text-muted-foreground">{fmtDate(m.dueDate)}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          {tasks.length > 0 && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-3"><CardTitle className="text-base">My tasks on this project ({tasks.length})</CardTitle></CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {tasks.map((t) => {
-                    const done = t.status === "DONE";
-                    return (
-                      <li key={t.id} className="flex items-center gap-2.5 text-sm">
-                        {done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> : t.status === "IN_PROGRESS" ? <CircleDot className="h-4 w-4 shrink-0 text-amber-500" /> : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                        <span className={cn("flex-1", done && "text-muted-foreground line-through")}>{t.title}</span>
-                        {t.dueDate && <span className="text-xs text-muted-foreground">{fmtDate(t.dueDate)}</span>}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3"><CardTitle className="text-base">Team ({p.team.length})</CardTitle></CardHeader>
-            <CardContent>
-              {p.team.length === 0 ? (
-                <Empty>No one assigned yet.</Empty>
+          {/* Notes / updates */}
+          <Card className="shadow-card">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4 text-primary" /> Notes &amp; updates</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <ProjectNoteComposer projectId={p.id} onChange={onChange} />
+              {p.notes.length === 0 ? (
+                <Empty>No updates yet. Post the first one.</Empty>
               ) : (
-                <ul className="space-y-2">
-                  {p.team.map((m) => (
-                    <li key={m.id} className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{m.name.split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</span>
-                      <div className="text-sm"><span className="font-medium">{m.name}</span>{m.role && <span className="text-muted-foreground"> · {m.role}</span>}</div>
+                <ul className="space-y-3">
+                  {p.notes.map((n) => (
+                    <li key={n.id} className="flex gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-500 text-[10px] font-bold text-white">{initials(n.author)}</span>
+                      <div className="min-w-0 flex-1 rounded-xl border bg-muted/20 px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium">{n.author}</span>
+                          <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            {fmtDate(n.createdAt)}
+                            {n.authorId === userId && <button onClick={async () => { try { await call(`/api/me/project-notes/${n.id}`, undefined, "DELETE"); onChange(); } catch { toast.error("Failed"); } }} aria-label="Delete" className="hover:text-red-600"><Trash2 className="h-3 w-3" /></button>}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">{n.body}</p>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1244,18 +1320,113 @@ function ProjectDetail({ assignment, timesheet, tasks, onBack }: { assignment: D
 
         <div className="space-y-4">
           <MetricCard icon={<Clock className="h-4 w-4" />} tone="primary" label="Your hours logged" value={`${Math.round(myHours * 10) / 10}h`} hint="last 21 days" />
-          <Card className="shadow-sm">
+
+          {/* Milestones (checkable) */}
+          <Card className="shadow-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Milestones</CardTitle>
+                {p.milestones.length > 0 && <span className="text-xs font-semibold text-muted-foreground">{msDone}/{p.milestones.length} · {msPct}%</span>}
+              </div>
+              {p.milestones.length > 0 && (
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div className={cn("h-full rounded-full", msPct === 100 ? "bg-emerald-500" : "bg-primary")} style={{ width: `${msPct}%` }} />
+                </div>
+              )}
+            </CardHeader>
+            <CardContent>
+              {p.milestones.length === 0 ? (
+                <Empty>No milestones yet. Your admin sets these.</Empty>
+              ) : (
+                <ul className="space-y-2">
+                  {p.milestones.map((m) => (
+                    <li key={m.id} className="flex items-center gap-2.5 text-sm">
+                      <button onClick={() => toggleMs(m.id)} disabled={busy !== null} aria-label="Toggle milestone">
+                        {busy === `ms-${m.id}` ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : m.done ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Circle className="h-4 w-4 text-muted-foreground hover:text-primary" />}
+                      </button>
+                      <span className={cn("flex-1", m.done && "text-muted-foreground line-through")}>{m.title}</span>
+                      {m.dueDate && <span className="text-xs text-muted-foreground">{fmtDate(m.dueDate)}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader className="pb-3"><CardTitle className="text-base">Team ({p.team.length})</CardTitle></CardHeader>
+            <CardContent>
+              {p.team.length === 0 ? <Empty>No one assigned yet.</Empty> : (
+                <ul className="space-y-2">
+                  {p.team.map((m) => (
+                    <li key={m.id} className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{initials(m.name)}</span>
+                      <div className="text-sm"><span className="font-medium">{m.name}</span>{m.role && <span className="text-muted-foreground"> · {m.role}</span>}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
             <CardHeader className="pb-3"><CardTitle className="text-base">Details</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
+              <Row label="Start" value={fmtDate(p.startDate)} />
+              <Row label="Due" value={fmtDate(p.dueDate)} />
+              {progress != null && <Row label="Timeline" value={`${progress}% elapsed`} />}
               <Row label="Status" value={p.status} />
-              <Row label="Health" value={health.label} />
               <Row label="Your role" value={assignment.role ?? "Member"} />
-              <Row label="Team size" value={String(p.team.length)} />
             </CardContent>
           </Card>
         </div>
       </div>
     </div>
+  );
+}
+
+function ProjectAddTask({ projectId, onChange }: { projectId: string; onChange: () => void }) {
+  const [title, setTitle] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/me/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, projectId }) });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
+      setTitle("");
+      toast.success("Task added to project");
+      onChange();
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); } finally { setBusy(false); }
+  }
+  return (
+    <form onSubmit={add} className="flex gap-2">
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a task to this project (assigned to you)…" className="h-9 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" />
+      <Button type="submit" size="sm" disabled={busy || !title.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}</Button>
+    </form>
+  );
+}
+
+function ProjectNoteComposer({ projectId, onChange }: { projectId: string; onChange: () => void }) {
+  const [body, setBody] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function post(e: React.FormEvent) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/me/projects/${projectId}/notes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
+      setBody("");
+      onChange();
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); } finally { setBusy(false); }
+  }
+  return (
+    <form onSubmit={post} className="flex gap-2">
+      <input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Post an update to the team…" className="h-9 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" />
+      <Button type="submit" size="sm" disabled={busy || !body.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Post"}</Button>
+    </form>
   );
 }
 

@@ -40,9 +40,20 @@ export async function getEmployeeSelf(userId: string) {
         project: {
           select: {
             ...SAFE_PROJECT,
+            stage: true,
             company: { select: { name: true } },
             assignments: { select: { role: true, user: { select: { id: true, name: true } } }, orderBy: { assignedAt: "asc" } },
             milestones: { select: { id: true, title: true, done: true, dueDate: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] },
+            notes: {
+              select: { id: true, body: true, createdAt: true, author: { select: { id: true, name: true } } },
+              orderBy: { createdAt: "desc" },
+              take: 30,
+            },
+            tasks: {
+              select: { id: true, title: true, status: true, priority: true, dueDate: true, assignedTo: { select: { id: true, name: true } } },
+              orderBy: [{ status: "asc" }, { dueDate: "asc" }],
+              take: 60,
+            },
           },
         },
       },
@@ -66,6 +77,45 @@ export async function getEmployeeSelf(userId: string) {
     }),
   ]);
   return { profile, assignments, todayAttendance, recentAttendance, leaves, salary, reviews, tasks };
+}
+
+// ---------------------------------------------------------------
+// Project workspace — actions for assigned members (collaborative)
+// ---------------------------------------------------------------
+
+/** Throws unless the user is assigned to the project. */
+async function assertProjectMember(userId: string, projectId: string) {
+  const a = await prisma.projectAssignment.findFirst({ where: { userId, projectId }, select: { id: true } });
+  if (!a) throw new ApiError(403, "You're not on this project.");
+}
+
+export async function addProjectNote(userId: string, projectId: string, body: string) {
+  await assertProjectMember(userId, projectId);
+  const text = body?.trim();
+  if (!text) throw new ApiError(400, "Note can't be empty.");
+  return prisma.projectNote.create({
+    data: { projectId, authorId: userId, body: text.slice(0, 4000) },
+    select: { id: true, body: true, createdAt: true, author: { select: { id: true, name: true } } },
+  });
+}
+
+export async function deleteProjectNote(userId: string, noteId: string) {
+  const note = await prisma.projectNote.findFirst({ where: { id: noteId, authorId: userId }, select: { id: true } });
+  if (!note) throw new ApiError(404, "Note not found.");
+  await prisma.projectNote.delete({ where: { id: noteId } });
+}
+
+export async function setProjectStage(userId: string, projectId: string, stage: "PLANNING" | "IN_PROGRESS" | "REVIEW" | "COMPLETED") {
+  await assertProjectMember(userId, projectId);
+  return prisma.project.update({ where: { id: projectId }, data: { stage }, select: { id: true, stage: true } });
+}
+
+/** Assigned member toggles a milestone on their project. */
+export async function toggleMilestoneAsMember(userId: string, milestoneId: string) {
+  const m = await prisma.milestone.findUnique({ where: { id: milestoneId }, select: { done: true, projectId: true } });
+  if (!m) throw new ApiError(404, "Milestone not found.");
+  await assertProjectMember(userId, m.projectId);
+  return prisma.milestone.update({ where: { id: milestoneId }, data: { done: !m.done }, select: { id: true, done: true } });
 }
 
 /** Employee toggles one of THEIR OWN assigned tasks done/undone. */

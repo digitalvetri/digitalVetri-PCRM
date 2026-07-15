@@ -57,6 +57,7 @@ model User {
   kbArticles          KbArticle[]
   goals               Goal[]              @relation("GoalOwner")
   notifications       Notification[]
+  projectNotes        ProjectNote[]
 
   @@index([clerkId])
   @@index([role])
@@ -1015,15 +1016,38 @@ model Project {
   startDate   DateTime?
   dueDate     DateTime?
   value       Float?        // contract value — admin/manager only
+  stage       ProjectStage  @default(PLANNING)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   assignments ProjectAssignment[]
   tasks       Task[]
   milestones  Milestone[]
+  notes       ProjectNote[]
 
   @@index([status])
   @@index([companyId])
+}
+
+enum ProjectStage {
+  PLANNING
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+}
+
+/// A note / update posted to a project by a team member.
+model ProjectNote {
+  id        String   @id @default(cuid())
+  projectId String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 /// A checklist milestone on a project (managed by admins/HR).
