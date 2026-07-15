@@ -56,7 +56,7 @@ import { formatINR, cn } from "@/lib/utils";
 // Serialized types (mirror /me/page.tsx)
 // ---------------------------------------------------------------
 
-interface TaskItem { id: string; title: string; description: string | null; status: string; priority: string; dueDate: string | null; projectId?: string | null; projectName?: string | null }
+interface TaskItem { id: string; title: string; description: string | null; status: string; priority: string; dueDate: string | null; projectId?: string | null; projectName?: string | null; subtasks?: { id: string; title: string; done: boolean }[] }
 
 interface Data {
   profile: { employeeCode: string; designation: string | null; department: string | null; phone: string | null; joinDate: string | null } | null;
@@ -85,7 +85,7 @@ interface Data {
   reviews: { id: string; period: string; rating: number; strengths: string | null; improvements: string | null; comments: string | null; createdAt: string }[];
   tasks: TaskItem[];
   announcements: { id: string; title: string; body: string; pinned: boolean; author: string; createdAt: string }[];
-  timesheet: { id: string; projectId: string | null; date: string; hours: number; note: string | null }[];
+  timesheet: { id: string; projectId: string | null; date: string; hours: number; note: string | null; status: string }[];
   goals: { id: string; title: string; detail: string | null; target: number; current: number; unit: string | null; dueDate: string | null; status: string }[];
   holidays: { id: string; date: string; name: string }[];
   notifications: { id: string; type: string; title: string; body: string | null; link: string | null; read: boolean; createdAt: string }[];
@@ -968,6 +968,7 @@ function TasksCard({
                     </div>
                     {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}
                     {t.dueDate && <p className="mt-0.5 text-xs text-muted-foreground"><CalendarDays className="mr-1 inline h-3 w-3" /> Due {fmtDate(t.dueDate)}</p>}
+                    <TaskSubtasks task={t} post={post} onChange={onAdd} />
                   </div>
                   <div className="flex shrink-0 gap-1">
                     {!done && !inProg && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => onStatus(t.id, "IN_PROGRESS")} disabled={loading}>Start</Button>}
@@ -1077,6 +1078,53 @@ function AddTaskRow({ post, onAdd, projects }: { post: (url: string, body?: unkn
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add
       </Button>
     </form>
+  );
+}
+
+function TaskSubtasks({ task, post, onChange }: { task: TaskItem; post: (url: string, body?: unknown, method?: string) => Promise<unknown>; onChange: () => void }) {
+  const subs = task.subtasks ?? [];
+  const [open, setOpen] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [title, setTitle] = React.useState("");
+  const done = subs.filter((s) => s.done).length;
+
+  async function toggle(id: string) {
+    try { await post(`/api/me/subtasks/${id}`, {}, "PATCH"); onChange(); } catch { toast.error("Failed"); }
+  }
+  async function remove(id: string) {
+    try { await post(`/api/me/subtasks/${id}`, {}, "DELETE"); onChange(); } catch { toast.error("Failed"); }
+  }
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setAdding(true);
+    try { await post(`/api/me/tasks/${task.id}/subtasks`, { title }); setTitle(""); onChange(); }
+    catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); } finally { setAdding(false); }
+  }
+
+  return (
+    <div className="mt-1.5">
+      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <ListChecks className="h-3 w-3" />
+        {subs.length > 0 ? <span>Checklist {done}/{subs.length}</span> : <span>Add checklist</span>}
+        {subs.length > 0 && <span className="ml-1 inline-block h-1 w-12 overflow-hidden rounded-full bg-muted align-middle"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${(done / subs.length) * 100}%` }} /></span>}
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1.5 border-l-2 pl-2.5">
+          {subs.map((s) => (
+            <div key={s.id} className="flex items-center gap-2 text-sm">
+              <button onClick={() => toggle(s.id)} aria-label="Toggle">{s.done ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Circle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />}</button>
+              <span className={cn("flex-1", s.done && "text-muted-foreground line-through")}>{s.title}</span>
+              <button onClick={() => remove(s.id)} aria-label="Delete" className="text-muted-foreground hover:text-red-600"><X className="h-3 w-3" /></button>
+            </div>
+          ))}
+          <form onSubmit={add} className="flex gap-1.5">
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a checklist item…" className="h-7 flex-1 rounded border bg-background px-2 text-xs outline-none focus:border-primary" />
+            <Button type="submit" size="sm" className="h-7 px-2" disabled={adding || !title.trim()}>{adding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}</Button>
+          </form>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1601,7 +1649,10 @@ function TimesheetTab({
                     {projName(e.projectId) && <span className="text-muted-foreground"> · {projName(e.projectId)}</span>}
                     {e.note && <span className="text-muted-foreground"> · {e.note}</span>}
                   </div>
-                  <button onClick={() => remove(e.id)} aria-label="Delete" className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Badge variant="outline" className={cn("text-[10px]", e.status === "APPROVED" ? "border-emerald-500/40 text-emerald-600" : e.status === "REJECTED" ? "border-red-500/40 text-red-600" : "text-amber-600 border-amber-500/40")}>{e.status}</Badge>
+                    {e.status !== "APPROVED" && <button onClick={() => remove(e.id)} aria-label="Delete" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>}
+                  </div>
                 </li>
               ))}
             </ul>

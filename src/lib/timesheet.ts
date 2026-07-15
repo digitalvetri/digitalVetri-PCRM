@@ -9,8 +9,13 @@ export async function listTimesheet(userId: string, days = 21) {
   return prisma.timesheetEntry.findMany({
     where: { userId, date: { gte: since } },
     orderBy: { date: "desc" },
-    select: { id: true, projectId: true, date: true, hours: true, note: true },
+    select: { id: true, projectId: true, date: true, hours: true, note: true, status: true },
   });
+}
+
+/** Admin approves/rejects a timesheet entry. */
+export async function reviewTimesheet(id: string, status: "APPROVED" | "REJECTED") {
+  return prisma.timesheetEntry.update({ where: { id }, data: { status, reviewedAt: new Date() }, select: { id: true, status: true } });
 }
 
 export async function addTimesheet(userId: string, input: { date: Date; hours: number; projectId?: string | null; note?: string | null }) {

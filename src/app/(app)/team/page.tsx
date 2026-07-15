@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, roleCan } from "@/lib/rbac";
-import { listEmployees, listProjects, listLeaveRequests, getAdminDashboard, getTrackingReport, getPayrollForMonth } from "@/lib/hr";
+import { listEmployees, listProjects, listLeaveRequests, getAdminDashboard, getTrackingReport, getPayrollForMonth, getPendingApprovals } from "@/lib/hr";
 import { listAnnouncements } from "@/lib/announcements";
 import { listArticles } from "@/lib/kb";
 import { listHolidays } from "@/lib/holidays";
@@ -27,7 +27,7 @@ export default async function TeamPage() {
   ]);
 
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const payroll = await getPayrollForMonth(currentMonth);
+  const [payroll, approvals] = await Promise.all([getPayrollForMonth(currentMonth), getPendingApprovals()]);
 
   const announcementRows = announcements.map((a) => ({
     id: a.id,
@@ -83,7 +83,7 @@ export default async function TeamPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Team" description="Create logins, assign projects, approve leave, manage salary and reviews. Employees sign in to their own private workspace." />
-      <TeamManager employees={employeeRows} projects={projectRows} leaves={leaveRows} dashboard={dashboard} tracking={tracking} announcements={announcementRows} articles={articleRows} holidays={holidayRows} payroll={payroll} />
+      <TeamManager employees={employeeRows} projects={projectRows} leaves={leaveRows} dashboard={dashboard} tracking={tracking} announcements={announcementRows} articles={articleRows} holidays={holidayRows} payroll={payroll} approvals={approvals} />
     </div>
   );
 }

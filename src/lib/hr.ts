@@ -73,7 +73,11 @@ export async function getEmployeeSelf(userId: string) {
       where: { assignedToId: userId },
       orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
       take: 40,
-      select: { id: true, title: true, description: true, status: true, priority: true, dueDate: true, projectId: true, project: { select: { name: true } } },
+      select: {
+        id: true, title: true, description: true, status: true, priority: true, dueDate: true, projectId: true,
+        project: { select: { name: true } },
+        subtasks: { select: { id: true, title: true, done: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] },
+      },
     }),
   ]);
   return { profile, assignments, todayAttendance, recentAttendance, leaves, salary, reviews, tasks };
@@ -116,6 +120,33 @@ export async function toggleMilestoneAsMember(userId: string, milestoneId: strin
   if (!m) throw new ApiError(404, "Milestone not found.");
   await assertProjectMember(userId, m.projectId);
   return prisma.milestone.update({ where: { id: milestoneId }, data: { done: !m.done }, select: { id: true, done: true } });
+}
+
+// --- Subtasks / checklists (self-scoped) ---
+
+async function assertTaskOwner(userId: string, taskId: string) {
+  const t = await prisma.task.findFirst({ where: { id: taskId, assignedToId: userId }, select: { id: true } });
+  if (!t) throw new ApiError(404, "Task not found.");
+}
+
+export async function addSubtask(userId: string, taskId: string, title: string) {
+  await assertTaskOwner(userId, taskId);
+  const text = title?.trim();
+  if (!text) throw new ApiError(400, "A checklist item needs a title.");
+  const count = await prisma.subtask.count({ where: { taskId } });
+  return prisma.subtask.create({ data: { taskId, title: text.slice(0, 200), order: count }, select: { id: true, title: true, done: true } });
+}
+
+export async function toggleSubtask(userId: string, subtaskId: string) {
+  const s = await prisma.subtask.findUnique({ where: { id: subtaskId }, select: { done: true, task: { select: { assignedToId: true } } } });
+  if (!s || s.task.assignedToId !== userId) throw new ApiError(404, "Checklist item not found.");
+  return prisma.subtask.update({ where: { id: subtaskId }, data: { done: !s.done }, select: { id: true, done: true } });
+}
+
+export async function deleteSubtask(userId: string, subtaskId: string) {
+  const s = await prisma.subtask.findUnique({ where: { id: subtaskId }, select: { task: { select: { assignedToId: true } } } });
+  if (!s || s.task.assignedToId !== userId) throw new ApiError(404, "Checklist item not found.");
+  await prisma.subtask.delete({ where: { id: subtaskId } });
 }
 
 /** Employee toggles one of THEIR OWN assigned tasks done/undone. */
@@ -828,6 +859,27 @@ export async function getTrackingReport(days = 7) {
   });
 
   return { days, dayKeys, rows };
+}
+
+/** Unified approvals queue: pending leave requests + pending timesheet entries. */
+export async function getPendingApprovals() {
+  const [leaves, timesheets] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: { status: "PENDING" },
+      orderBy: { createdAt: "asc" },
+      include: { user: { select: { name: true } } },
+    }),
+    prisma.timesheetEntry.findMany({
+      where: { status: "PENDING" },
+      orderBy: { date: "desc" },
+      take: 100,
+      include: { user: { select: { name: true } } },
+    }),
+  ]);
+  return {
+    leaves: leaves.map((l) => ({ id: l.id, employee: l.user.name, type: l.type, startDate: l.startDate.toISOString(), endDate: l.endDate.toISOString(), reason: l.reason })),
+    timesheets: timesheets.map((t) => ({ id: t.id, employee: t.user.name, date: t.date.toISOString(), hours: t.hours, note: t.note })),
+  };
 }
 
 /** Company directory — safe contact info only (no salary/private HR data). */

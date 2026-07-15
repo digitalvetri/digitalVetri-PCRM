@@ -136,6 +136,10 @@ interface Payroll {
   headcount: number;
   totalNet: number;
 }
+interface Approvals {
+  leaves: { id: string; employee: string; type: string; startDate: string; endDate: string; reason: string | null }[];
+  timesheets: { id: string; employee: string; date: string; hours: number; note: string | null }[];
+}
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
@@ -155,12 +159,14 @@ const STATUS_TONE: Record<string, string> = {
   ON_HOLD: "border-amber-500/40 text-amber-600",
 };
 
-export function TeamManager({ employees, projects, leaves, dashboard, tracking, announcements, articles, holidays, payroll }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking; announcements: AnnouncementRow[]; articles: ArticleRow[]; holidays: HolidayRow[]; payroll: Payroll }) {
+export function TeamManager({ employees, projects, leaves, dashboard, tracking, announcements, articles, holidays, payroll, approvals }: { employees: EmployeeRow[]; projects: ProjectRow[]; leaves: LeaveRow[]; dashboard: Dashboard; tracking: Tracking; announcements: AnnouncementRow[]; articles: ArticleRow[]; holidays: HolidayRow[]; payroll: Payroll; approvals: Approvals }) {
   const pendingLeave = leaves.filter((l) => l.status === "PENDING").length;
+  const pendingApprovals = approvals.leaves.length + approvals.timesheets.length;
   return (
     <Tabs defaultValue="overview" className="animate-fade-in">
       <TabsList className="h-auto flex-wrap justify-start">
         <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="approvals">Approvals{pendingApprovals ? ` (${pendingApprovals})` : ""}</TabsTrigger>
         <TabsTrigger value="tracking">Tracking</TabsTrigger>
         <TabsTrigger value="employees">Employees ({employees.length})</TabsTrigger>
         <TabsTrigger value="projects">Projects ({projects.length})</TabsTrigger>
@@ -169,6 +175,9 @@ export function TeamManager({ employees, projects, leaves, dashboard, tracking, 
         <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
         <TabsTrigger value="chat">Chat</TabsTrigger>
       </TabsList>
+      <TabsContent value="approvals" className="mt-4">
+        <ApprovalsTab approvals={approvals} />
+      </TabsContent>
       <TabsContent value="overview" className="mt-4">
         <OverviewTab dashboard={dashboard} announcements={announcements} />
       </TabsContent>
@@ -396,6 +405,75 @@ function KpiCard({ icon, label, value, hint, tone }: { icon: React.ReactNode; la
         {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------
+// Approvals inbox (leave + timesheets)
+// ---------------------------------------------------------------
+
+function ApprovalsTab({ approvals }: { approvals: Approvals }) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const total = approvals.leaves.length + approvals.timesheets.length;
+
+  async function act(url: string, status: "APPROVED" | "REJECTED", key: string) {
+    setBusy(key);
+    try {
+      await post(url, { status }, "PATCH");
+      toast.success(status === "APPROVED" ? "Approved" : "Rejected");
+      router.refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); } finally { setBusy(null); }
+  }
+
+  if (total === 0) {
+    return <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">🎉 Nothing waiting for approval.</CardContent></Card>;
+  }
+
+  return (
+    <div className="space-y-5">
+      {approvals.leaves.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Plane className="h-4 w-4 text-primary" /> Leave requests ({approvals.leaves.length})</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {approvals.leaves.map((l) => (
+              <div key={l.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{l.employee}</div>
+                  <div className="text-xs text-muted-foreground">{l.type} · {fmtDate(l.startDate)} → {fmtDate(l.endDate)}{l.reason ? ` · ${l.reason}` : ""}</div>
+                </div>
+                <ApproveButtons busy={busy === `l-${l.id}`} onApprove={() => act(`/api/team/leave/${l.id}`, "APPROVED", `l-${l.id}`)} onReject={() => act(`/api/team/leave/${l.id}`, "REJECTED", `l-${l.id}`)} />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+      {approvals.timesheets.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4 text-primary" /> Timesheet entries ({approvals.timesheets.length})</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {approvals.timesheets.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{t.employee} · <span className="tabular-nums">{t.hours}h</span></div>
+                  <div className="text-xs text-muted-foreground">{fmtDate(t.date)}{t.note ? ` · ${t.note}` : ""}</div>
+                </div>
+                <ApproveButtons busy={busy === `t-${t.id}`} onApprove={() => act(`/api/team/timesheet/${t.id}`, "APPROVED", `t-${t.id}`)} onReject={() => act(`/api/team/timesheet/${t.id}`, "REJECTED", `t-${t.id}`)} />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ApproveButtons({ busy, onApprove, onReject }: { busy: boolean; onApprove: () => void; onReject: () => void }) {
+  return (
+    <div className="flex gap-2">
+      <Button size="sm" variant="outline" className="border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10" onClick={onApprove} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Approve</Button>
+      <Button size="sm" variant="outline" className="border-red-500/40 text-red-600 hover:bg-red-500/10" onClick={onReject} disabled={busy}><X className="h-4 w-4" /> Reject</Button>
+    </div>
   );
 }
 

@@ -105,6 +105,7 @@ export default async function MePage() {
       dueDate: t.dueDate?.toISOString() ?? null,
       projectId: t.projectId,
       projectName: t.project?.name ?? null,
+      subtasks: t.subtasks.map((s) => ({ id: s.id, title: s.title, done: s.done })),
     })),
     announcements: announcements.map((a) => ({
       id: a.id,
@@ -120,6 +121,7 @@ export default async function MePage() {
       date: t.date.toISOString(),
       hours: t.hours,
       note: t.note,
+      status: t.status,
     })),
     goals: goals.map((g) => ({
       id: g.id,
