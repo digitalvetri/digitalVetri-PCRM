@@ -6,7 +6,10 @@ import { toast } from "sonner";
 import {
   Briefcase,
   CalendarDays,
+  CheckCircle2,
+  Circle,
   Clock,
+  ListChecks,
   LogIn,
   LogOut,
   Loader2,
@@ -36,6 +39,7 @@ interface Data {
   leaves: { id: string; type: string; startDate: string; endDate: string; status: string; reason: string | null }[];
   salary: { id: string; month: string; baseSalary: number; allowances: number; deductions: number; netPay: number; status: string; paidAt: string | null }[];
   reviews: { id: string; period: string; rating: number; strengths: string | null; improvements: string | null; comments: string | null; createdAt: string }[];
+  tasks: { id: string; title: string; description: string | null; status: string; priority: string; dueDate: string | null }[];
   performance: { attendanceRate: number | null; avgRating: number | null; projectCount: number; score: number; reviewCount: number };
 }
 
@@ -50,6 +54,11 @@ const STATUS_TONE: Record<string, string> = {
   DRAFT: "text-muted-foreground",
   ACTIVE: "text-primary border-primary/40",
   COMPLETED: "text-emerald-600 border-emerald-500/40",
+};
+const PRIORITY_TONE: Record<string, string> = {
+  URGENT: "text-red-600 border-red-500/40",
+  HIGH: "text-amber-600 border-amber-500/40",
+  LOW: "text-muted-foreground",
 };
 
 export function EmployeePortal({ name, data }: { name: string; data: Data }) {
@@ -81,8 +90,21 @@ export function EmployeePortal({ name, data }: { name: string; data: Data }) {
     }
   }
 
+  async function toggleTask(id: string) {
+    setBusy(`task-${id}`);
+    try {
+      await post(`/api/me/tasks/${id}/toggle`);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't update task");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const checkedIn = Boolean(data.todayAttendance?.checkIn);
   const checkedOut = Boolean(data.todayAttendance?.checkOut);
+  const openTasks = data.tasks.filter((t) => t.status !== "DONE").length;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -138,6 +160,51 @@ export function EmployeePortal({ name, data }: { name: string; data: Data }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* My Tasks — assigned by the admin */}
+      <Section title={`My Tasks${openTasks ? ` · ${openTasks} open` : ""}`} icon={<ListChecks className="h-4 w-4" />}>
+        {data.tasks.length === 0 ? (
+          <Empty>No tasks assigned yet. Your manager will add them here.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {data.tasks.map((t) => {
+              const done = t.status === "DONE";
+              return (
+                <li key={t.id} className="flex items-start gap-3 rounded-lg border p-3">
+                  <button
+                    onClick={() => toggleTask(t.id)}
+                    disabled={busy === `task-${t.id}`}
+                    aria-label={done ? "Mark as not done" : "Mark as done"}
+                    className="mt-0.5 shrink-0"
+                  >
+                    {busy === `task-${t.id}` ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : done ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-muted-foreground transition-colors hover:text-primary" />
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={cn("font-medium", done && "text-muted-foreground line-through")}>{t.title}</span>
+                      {t.priority && t.priority !== "MEDIUM" && (
+                        <Badge variant="outline" className={cn("text-[10px]", PRIORITY_TONE[t.priority])}>{t.priority}</Badge>
+                      )}
+                    </div>
+                    {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}
+                    {t.dueDate && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        <CalendarDays className="mr-1 inline h-3 w-3" /> Due {fmtDate(t.dueDate)}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Section>
 
       {/* My Projects — names only, never the value */}
       <Section title="My Projects" icon={<Briefcase className="h-4 w-4" />}>

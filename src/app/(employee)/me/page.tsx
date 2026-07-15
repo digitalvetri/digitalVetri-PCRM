@@ -76,6 +76,14 @@ export default async function MePage() {
       comments: r.comments,
       createdAt: r.createdAt.toISOString(),
     })),
+    tasks: self.tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: t.priority,
+      dueDate: t.dueDate?.toISOString() ?? null,
+    })),
     performance,
   };
 

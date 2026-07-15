@@ -142,11 +142,159 @@ function EmployeesTab({ employees, projects }: { employees: EmployeeRow[]; proje
 
 function ManageEmployee({ employee, projects, onDone }: { employee: EmployeeRow; projects: ProjectRow[]; onDone: () => void }) {
   return (
-    <div className="grid gap-4 border-t bg-muted/20 p-4 lg:grid-cols-3">
-      <AssignPanel employee={employee} projects={projects} onDone={onDone} />
-      <SalaryPanel employee={employee} onDone={onDone} />
-      <ReviewPanel employee={employee} onDone={onDone} />
+    <div className="space-y-4 border-t bg-muted/20 p-4">
+      <EmployeeDetail employeeId={employee.id} />
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <AssignTaskPanel employee={employee} onDone={onDone} />
+        <AssignPanel employee={employee} projects={projects} onDone={onDone} />
+        <SalaryPanel employee={employee} onDone={onDone} />
+        <ReviewPanel employee={employee} onDone={onDone} />
+      </div>
     </div>
+  );
+}
+
+interface EmpDetail {
+  attendanceRate: number | null;
+  performance: { score: number; avgRating: number | null; attendanceRate: number | null };
+  tasksDone: number;
+  tasksOpen: number;
+  tasks: { id: string; title: string; status: string; priority: string; dueDate: string | null }[];
+  leaves: { id: string; type: string; startDate: string; endDate: string; status: string }[];
+  salary: { id: string; month: string; netPay: number; status: string }[];
+  reviews: { id: string; period: string; rating: number }[];
+  projects: { id: string; name: string; status: string }[];
+}
+
+function EmployeeDetail({ employeeId }: { employeeId: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [d, setD] = React.useState<EmpDetail | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  async function load() {
+    if (!open) {
+      setOpen(true);
+      if (!d) {
+        setLoading(true);
+        try {
+          const res = await fetch(`/api/team/employees/${employeeId}`);
+          const json = await res.json();
+          if (res.ok) setD(json as EmpDetail);
+        } finally {
+          setLoading(false);
+        }
+      }
+    } else {
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-background">
+      <button onClick={load} className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium">
+        <span>Full details — attendance, tasks, performance</span>
+        <span className="text-xs text-muted-foreground">{open ? "Hide" : "View"}</span>
+      </button>
+      {open && (
+        <div className="border-t p-3">
+          {loading || !d ? (
+            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Metric label="Performance" value={`${d.performance.score}`} />
+                <Metric label="Attendance" value={d.attendanceRate != null ? `${d.attendanceRate}%` : "—"} />
+                <Metric label="Tasks done" value={`${d.tasksDone}`} />
+                <Metric label="Tasks open" value={`${d.tasksOpen}`} warn={d.tasksOpen > 0} />
+              </div>
+              {d.tasks.length > 0 && (
+                <div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tasks</div>
+                  <ul className="space-y-1">
+                    {d.tasks.slice(0, 8).map((t) => (
+                      <li key={t.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className={cn(t.status === "DONE" && "text-muted-foreground line-through")}>{t.title}</span>
+                        <Badge variant="outline" className={cn("text-[10px]", STATUS_TONE[t.status] ?? "")}>{t.status}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {d.projects.length > 0 && (
+                  <DetailList title="Projects" items={d.projects.map((p) => `${p.name} · ${p.status}`)} />
+                )}
+                {d.salary.length > 0 && (
+                  <DetailList title="Recent salary" items={d.salary.slice(0, 4).map((s) => `${s.month} · ${formatINR(s.netPay)} · ${s.status}`)} />
+                )}
+                {d.reviews.length > 0 && (
+                  <DetailList title="Reviews" items={d.reviews.slice(0, 4).map((r) => `${r.period} · ${r.rating}★`)} />
+                )}
+                {d.leaves.length > 0 && (
+                  <DetailList title="Leave" items={d.leaves.slice(0, 4).map((l) => `${l.type} · ${fmtDate(l.startDate)} · ${l.status}`)} />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+  return (
+    <div className={cn("rounded-md border px-2.5 py-1.5", warn ? "border-amber-500/40 bg-amber-500/5" : "bg-muted/30")}>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn("text-sm font-bold tabular-nums", warn && "text-amber-600")}>{value}</div>
+    </div>
+  );
+}
+
+function DetailList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+      <ul className="space-y-0.5 text-sm">
+        {items.map((it, i) => <li key={i} className="text-muted-foreground">{it}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+function AssignTaskPanel({ employee, onDone }: { employee: EmployeeRow; onDone: () => void }) {
+  const [title, setTitle] = React.useState("");
+  const [dueDate, setDueDate] = React.useState("");
+  const [priority, setPriority] = React.useState("MEDIUM");
+  const [busy, setBusy] = React.useState(false);
+  async function assign() {
+    if (!title.trim()) return toast.error("Task title required");
+    setBusy(true);
+    try {
+      await post("/api/team/tasks", { employeeId: employee.id, title, dueDate: dueDate || undefined, priority });
+      toast.success("Task assigned");
+      setTitle("");
+      setDueDate("");
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <MiniCard title="Assign task">
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title" className="h-9 w-full rounded-md border bg-background px-2 text-sm" />
+      <div className="flex gap-1.5">
+        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-9 flex-1 rounded-md border bg-background px-2 text-sm" />
+        <select value={priority} onChange={(e) => setPriority(e.target.value)} className="h-9 w-24 rounded-md border bg-background px-2 text-sm">
+          {["URGENT", "HIGH", "MEDIUM", "LOW"].map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+      <Button size="sm" onClick={assign} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Assign
+      </Button>
+    </MiniCard>
   );
 }
 

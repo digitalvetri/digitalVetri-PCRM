@@ -28,7 +28,7 @@ const SAFE_PROJECT = {
 // ---------------------------------------------------------------
 
 export async function getEmployeeSelf(userId: string) {
-  const [profile, assignments, todayAttendance, recentAttendance, leaves, salary, reviews] = await Promise.all([
+  const [profile, assignments, todayAttendance, recentAttendance, leaves, salary, reviews, tasks] = await Promise.all([
     prisma.employeeProfile.findUnique({ where: { userId } }),
     prisma.projectAssignment.findMany({
       where: { userId },
@@ -45,8 +45,25 @@ export async function getEmployeeSelf(userId: string) {
       take: 10,
       select: { id: true, period: true, rating: true, strengths: true, improvements: true, comments: true, createdAt: true },
     }),
+    prisma.task.findMany({
+      where: { assignedToId: userId },
+      orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
+      take: 40,
+      select: { id: true, title: true, description: true, status: true, priority: true, dueDate: true },
+    }),
   ]);
-  return { profile, assignments, todayAttendance, recentAttendance, leaves, salary, reviews };
+  return { profile, assignments, todayAttendance, recentAttendance, leaves, salary, reviews, tasks };
+}
+
+/** Employee toggles one of THEIR OWN assigned tasks done/undone. */
+export async function toggleEmployeeTask(userId: string, taskId: string) {
+  const t = await prisma.task.findFirst({ where: { id: taskId, assignedToId: userId }, select: { id: true, status: true } });
+  if (!t) throw new ApiError(404, "Task not found.");
+  const done = t.status === "DONE";
+  return prisma.task.update({
+    where: { id: taskId },
+    data: { status: done ? "TODO" : "DONE", completedAt: done ? null : new Date() },
+  });
 }
 
 export async function checkIn(userId: string) {
@@ -170,6 +187,70 @@ export async function listEmployees() {
     include: { employeeProfile: true },
     orderBy: { createdAt: "desc" },
   });
+}
+
+/** Admin assigns a task to an employee. */
+export async function assignTask(
+  adminId: string,
+  employeeId: string,
+  input: { title: string; description?: string | null; dueDate?: Date | null; priority?: string | null }
+) {
+  const emp = await prisma.user.findFirst({ where: { id: employeeId, role: "EMPLOYEE" }, select: { id: true } });
+  if (!emp) throw new ApiError(400, "Not an employee.");
+  if (!input.title?.trim()) throw new ApiError(400, "A task needs a title.");
+  const pr = (input.priority ?? "").toUpperCase();
+  return prisma.task.create({
+    data: {
+      title: input.title.trim(),
+      description: input.description?.trim() || undefined,
+      createdById: adminId,
+      assignedToId: employeeId,
+      dueDate: input.dueDate ?? undefined,
+      priority: pr === "URGENT" || pr === "HIGH" || pr === "LOW" ? (pr as "URGENT" | "HIGH" | "LOW") : "MEDIUM",
+    },
+  });
+}
+
+/** Full per-employee view for an admin: attendance, tasks, leave, salary, performance. */
+export async function getEmployeeAdminDetail(employeeId: string) {
+  const emp = await prisma.user.findFirst({
+    where: { id: employeeId, role: "EMPLOYEE" },
+    include: { employeeProfile: true },
+  });
+  if (!emp) throw new ApiError(404, "Employee not found.");
+  const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+  const [attendance, tasks, leaves, salary, reviews, assignments, perf] = await Promise.all([
+    prisma.attendance.findMany({ where: { userId: employeeId }, orderBy: { date: "desc" }, take: 30 }),
+    prisma.task.findMany({
+      where: { assignedToId: employeeId },
+      orderBy: [{ status: "asc" }, { dueDate: "asc" }],
+      take: 40,
+      select: { id: true, title: true, status: true, priority: true, dueDate: true },
+    }),
+    prisma.leaveRequest.findMany({ where: { userId: employeeId }, orderBy: { createdAt: "desc" }, take: 15 }),
+    prisma.salaryRecord.findMany({ where: { userId: employeeId }, orderBy: { month: "desc" }, take: 12 }),
+    prisma.performanceReview.findMany({ where: { userId: employeeId }, orderBy: { createdAt: "desc" }, take: 10 }),
+    prisma.projectAssignment.findMany({ where: { userId: employeeId }, include: { project: { select: { id: true, name: true, status: true } } } }),
+    getEmployeePerformance(employeeId),
+  ]);
+  const recent = attendance.filter((a) => a.date >= since);
+  const present = recent.filter((a) => a.status === "PRESENT" || a.status === "HALF_DAY").length;
+  const tasksDone = tasks.filter((t) => t.status === "DONE").length;
+  return {
+    profile: emp.employeeProfile,
+    name: emp.name,
+    email: emp.email,
+    attendance,
+    attendanceRate: recent.length ? Math.round((present / recent.length) * 100) : null,
+    tasks,
+    tasksDone,
+    tasksOpen: tasks.length - tasksDone,
+    leaves,
+    salary,
+    reviews,
+    assignments,
+    performance: perf,
+  };
 }
 
 // --- Projects ---
