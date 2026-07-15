@@ -106,6 +106,26 @@ function isMobileDevice(): boolean {
   return typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|Silk|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
+// Barge-in: decide whether text heard WHILE Vetri is speaking is really the user
+// (interrupt) rather than the mic picking up Vetri's own voice. We compare the
+// heard words against what Vetri is currently saying — high overlap = it's
+// hearing itself (ignore); low overlap or the wake word = the user is talking.
+function isUserInterruption(heard: string, spokenLower: string): boolean {
+  const t = heard.toLowerCase().trim();
+  if (!t) return false;
+  const words = t.split(/\s+/).filter((w) => w.length > 1);
+  const spokenSet = new Set(spokenLower.split(/\s+/));
+  const overlap = words.length ? words.filter((w) => spokenSet.has(w)).length / words.length : 1;
+  // Clearly you (not the mic echoing Vetri): 2+ words that mostly AREN'T what
+  // Vetri is currently saying.
+  if (words.length >= 2 && overlap < 0.5) return true;
+  // "Vetri" / "stop" — but only when Vetri isn't itself saying that word (so it
+  // never barges in on its own brand name or phrasing).
+  if (containsWakeWord(t) && !/vetri|வெற்றி/.test(spokenLower)) return true;
+  if (/\b(stop|wait|hold on|enough|நிறுத்து|போதும்)\b/.test(t) && !/\b(stop|wait|enough)\b/.test(spokenLower)) return true;
+  return false;
+}
+
 // --- Guided creation (multi-turn: ask each detail, then save) ---
 type OnboardType = "client" | "lead" | "prospect";
 interface OnboardStep {
@@ -196,6 +216,7 @@ export function AiAssistant() {
   const convoRef = React.useRef(false);
   const sessionConvoRef = React.useRef(false); // continuous convo after a voice wake, until the panel is closed
   const voiceOnRef = React.useRef(false);
+  const speakingTextRef = React.useRef(""); // what Vetri is currently saying (for barge-in filtering)
   const [interim, setInterim] = React.useState(""); // live caption of what you're saying
   const [lang, setLang] = React.useState<Lang>("en");
   const langRef = React.useRef<Lang>("en");
@@ -350,7 +371,10 @@ export function AiAssistant() {
       // own, or a clap): a short spoken "Yes boss?" then listen.
       if (opts?.greet && !initial.trim() && voiceOnRef.current) {
         ignoreUntilRef.current = Date.now() + 1400;
-        void speakSmart(langRef.current === "ta" ? "சொல்லுங்க பாஸ்." : "Yes boss?", langRef.current);
+        speakingTextRef.current = langRef.current === "ta" ? "சொல்லுங்க பாஸ்" : "yes boss";
+        void speakSmart(langRef.current === "ta" ? "சொல்லுங்க பாஸ்." : "Yes boss?", langRef.current).finally(() => {
+          speakingTextRef.current = "";
+        });
       }
       // The always-on wake recognizer already feeds the buffer; only spin up a
       // capture recognizer when it isn't running (tap / clap activation).
@@ -384,11 +408,6 @@ export function AiAssistant() {
       rec.continuous = true;
       rec.interimResults = true;
       rec.onresult = (e) => {
-        // Never react to our own speech — otherwise the CEO saying "DigitalVetri"
-        // would re-trigger the wake word and loop. `speaking` is ground truth;
-        // the ignore-window is a fallback for the moment right after speech ends.
-        if (isSpeaking()) return;
-        if (Date.now() < ignoreUntilRef.current) return;
         let finalText = "";
         let interim = "";
         for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -396,6 +415,23 @@ export function AiAssistant() {
           if (r.isFinal) finalText += r[0].transcript;
           else interim += r[0].transcript;
         }
+        // Barge-in: while Vetri is talking, only YOU can interrupt it. We compare
+        // what's heard against what Vetri is saying so it never cuts itself off on
+        // its own voice. A real interruption stops Vetri and captures your words.
+        if (isSpeaking()) {
+          if (!isUserInterruption(finalText || interim, speakingTextRef.current)) return;
+          cancelSpeech();
+          speakingTextRef.current = "";
+          if (!armedRef.current) arm("", { session: true });
+          const seed = stripWakeWord(finalText || interim).trim();
+          if (seed) {
+            questionBufRef.current = seed;
+            setInterim(seed);
+            finalizeSoon();
+          }
+          return;
+        }
+        if (Date.now() < ignoreUntilRef.current) return;
         if (!armedRef.current) {
           if (containsWakeWord(finalText)) arm(stripWakeWord(finalText), { greet: true, session: true });
           else if (containsWakeWord(interim)) arm(stripWakeWord(interim), { greet: true, session: true });
@@ -711,7 +747,9 @@ export function AiAssistant() {
     // actual playback, so Vetri starts listening again the moment it stops talking
     // (fixes "I call it 5 times and it wakes once" — it was staying deaf too long).
     ignoreUntilRef.current = Date.now() + 1200;
+    speakingTextRef.current = text.toLowerCase();
     void speakSmart(text, lang).finally(() => {
+      speakingTextRef.current = "";
       // The moment Vetri stops talking, listen for the reply — a natural
       // back-and-forth without repeating the wake word each turn.
       if (keepGoing && !armedRef.current) setTimeout(() => arm(""), 300);
