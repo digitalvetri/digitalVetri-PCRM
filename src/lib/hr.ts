@@ -861,6 +861,33 @@ export async function getTrackingReport(days = 7) {
   return { days, dayKeys, rows };
 }
 
+/** Compact team snapshot for Vetri (the AI CEO) to reason + report on. */
+export async function getVetriHrContext() {
+  const [dash, approvals] = await Promise.all([getAdminDashboard(), getPendingApprovals()]);
+  return {
+    date: new Date().toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "long" }),
+    headcount: dash.headcount,
+    presentToday: dash.presentToday,
+    onLeaveToday: dash.onLeaveToday,
+    absentToday: dash.absentToday,
+    openTasks: dash.totalOpen,
+    overdueTasks: dash.totalOverdue,
+    activeProjects: dash.activeProjects,
+    avgRating: dash.avgRating,
+    pendingLeaveApprovals: approvals.leaves.length,
+    pendingTimesheetApprovals: approvals.timesheets.length,
+    risks: dash.risks,
+    employees: dash.rows.map((r) => ({
+      name: r.name,
+      status: r.status,
+      designation: r.designation,
+      openTasks: r.openTasks,
+      overdueTasks: r.overdueTasks,
+      attendanceRate: r.attendanceRate,
+    })),
+  };
+}
+
 /** Unified approvals queue: pending leave requests + pending timesheet entries. */
 export async function getPendingApprovals() {
   const [leaves, timesheets] = await Promise.all([

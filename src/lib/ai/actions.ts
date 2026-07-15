@@ -38,6 +38,27 @@ export async function matchProspects(companyName: string): Promise<ProspectMatch
   return rows.map((r) => ({ id: r.id, companyName: r.company.name }));
 }
 
+/** Find an active employee by (partial) name — for voice HR actions. */
+export async function matchEmployee(name: string): Promise<{ id: string; name: string }[]> {
+  const rows = await prisma.user.findMany({
+    where: { role: "EMPLOYEE", isActive: true, name: { contains: name.trim(), mode: "insensitive" } },
+    select: { id: true, name: true },
+    take: 5,
+  });
+  return rows;
+}
+
+/** Find a PENDING leave request by the employee's (partial) name. */
+export async function matchPendingLeave(employeeName: string): Promise<{ id: string; employeeName: string; type: string; startDate: string; endDate: string }[]> {
+  const rows = await prisma.leaveRequest.findMany({
+    where: { status: "PENDING", user: { name: { contains: employeeName.trim(), mode: "insensitive" } } },
+    select: { id: true, type: true, startDate: true, endDate: true, user: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
+    take: 5,
+  });
+  return rows.map((r) => ({ id: r.id, employeeName: r.user.name, type: r.type, startDate: r.startDate.toISOString(), endDate: r.endDate.toISOString() }));
+}
+
 // --- Executors ---
 
 export async function executeCreateTask(userId: string, p: { title: string; dueDate?: string | null; priority?: string | null }) {

@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { withApi } from "@/lib/api";
-import { requireUser } from "@/lib/rbac";
+import { requireUser, roleCan } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { askAssistant, interpretVoice, VETRI_ROUTES } from "@/lib/ai/assistant";
 import { matchCompanies } from "@/lib/ai/command";
-import { matchProspects } from "@/lib/ai/actions";
+import { matchProspects, matchEmployee, matchPendingLeave } from "@/lib/ai/actions";
+import { getVetriHrContext } from "@/lib/hr";
 import { formatINR } from "@/lib/utils";
 
 const schema = z.object({
@@ -27,10 +28,68 @@ export async function POST(req: Request) {
     enforceRateLimit(`ai:assistant:${user.id}`, 40, 60_000);
     const { question, fast, lang = "en", history = [] } = schema.parse(await req.json());
 
-    if (!fast) return askAssistant(question, lang);
+    // Give Vetri the team/HR brain — but only for admins/managers (privacy).
+    const isHrManager = roleCan(user.role, "hr.manage");
+    const hr = isHrManager ? await getVetriHrContext() : undefined;
+
+    if (!fast) return askAssistant(question, lang, hr);
 
     const ta = lang === "ta";
-    const r = await interpretVoice(question, lang, history);
+    const r = await interpretVoice(question, lang, history, hr);
+
+    // ---- HR voice actions (admins/managers only) ----
+    if (isHrManager && r.intent === "assign_task" && r.employee?.trim() && r.title?.trim()) {
+      const emps = await matchEmployee(r.employee);
+      if (emps.length === 1) {
+        const due = r.dueDate ? (ta ? ` (${r.dueDate})` : ` (due ${r.dueDate})`) : "";
+        return {
+          kind: "confirm",
+          action: "assign_task",
+          params: { employeeId: emps[0].id, employeeName: emps[0].name, title: r.title.trim(), dueDate: r.dueDate, priority: r.priority },
+          title: `${r.title.trim()} → ${emps[0].name}`,
+          say: ta ? `${emps[0].name}க்கு பணி “${r.title.trim()}”${due} ஒதுக்கவா? சேமிக்க தட்டவும்.` : `Assign “${r.title.trim()}”${due} to ${emps[0].name}? Tap Save.`,
+        };
+      }
+      return { kind: "clarify", say: emps.length ? (ta ? "எந்த ஊழியர்?" : `I found a few — ${emps.map((e) => e.name).join(", ")}. Which one?`) : (ta ? `"${r.employee}" ஊழியர் கிடைக்கவில்லை.` : `I couldn't find an employee called "${r.employee}".`) };
+    }
+
+    if (isHrManager && r.intent === "review_leave" && r.employee?.trim()) {
+      const approve = (r.decision ?? "").toLowerCase().startsWith("appro") || (r.decision ?? "").toLowerCase().includes("accept");
+      const leaves = await matchPendingLeave(r.employee);
+      if (leaves.length === 1) {
+        const l = leaves[0];
+        return {
+          kind: "confirm",
+          action: "review_leave",
+          params: { leaveId: l.id, employeeName: l.employeeName, decision: approve ? "APPROVED" : "REJECTED" },
+          title: `${approve ? "Approve" : "Reject"} — ${l.employeeName} (${l.type})`,
+          say: ta ? `${l.employeeName} இன் விடுப்பை ${approve ? "அனுமதிக்கவா" : "நிராகரிக்கவா"}? சேமிக்க தட்டவும்.` : `${approve ? "Approve" : "Reject"} ${l.employeeName}'s ${l.type.toLowerCase()} leave? Tap Save.`,
+        };
+      }
+      return { kind: "clarify", say: leaves.length ? (ta ? "எந்த விடுப்பு விண்ணப்பம்?" : "Which leave request exactly?") : (ta ? `${r.employee}க்கு நிலுவையில் விடுப்பு இல்லை.` : `No pending leave found for "${r.employee}".`) };
+    }
+
+    if (isHrManager && r.intent === "post_chat" && r.message?.trim()) {
+      return {
+        kind: "confirm",
+        action: "post_chat",
+        params: { message: r.message.trim() },
+        title: r.message.trim(),
+        say: ta ? `இதை டீம் சாட்டில் இடவா? சேமிக்க தட்டவும்.` : `Post this to Team Chat? Tap Save.`,
+      };
+    }
+
+    if (isHrManager && r.intent === "announce" && (r.title?.trim() || r.message?.trim())) {
+      const title = r.title?.trim() || "Announcement";
+      const body = r.message?.trim() || r.title?.trim() || "";
+      return {
+        kind: "confirm",
+        action: "announce",
+        params: { title, body },
+        title,
+        say: ta ? `“${title}” அறிவிப்பை வெளியிடவா? சேமிக்க தட்டவும்.` : `Publish the announcement “${title}”? Tap Save.`,
+      };
+    }
 
     // Navigate — map to a real route; unknown destination falls back to an answer.
     if (r.intent === "navigate" && r.destination && VETRI_ROUTES[r.destination]) {

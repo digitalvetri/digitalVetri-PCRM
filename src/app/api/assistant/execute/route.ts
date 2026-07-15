@@ -4,10 +4,14 @@ import { requireUser } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { executeAddCompany, executeRecordPayment } from "@/lib/ai/command";
 import { executeCreateTask, executeCreateNote, executeScheduleMeeting, executeCreateFollowup } from "@/lib/ai/actions";
+import { assignTask, reviewLeave } from "@/lib/hr";
+import { sendMessage } from "@/lib/chat";
+import { createAnnouncement } from "@/lib/announcements";
+import { parseISTDate } from "@/lib/time";
 import { formatINR } from "@/lib/utils";
 
 const schema = z.object({
-  action: z.enum(["add_company", "record_payment", "create_task", "create_note", "schedule_meeting", "create_followup"]),
+  action: z.enum(["add_company", "record_payment", "create_task", "create_note", "schedule_meeting", "create_followup", "assign_task", "review_leave", "post_chat", "announce"]),
   params: z.record(z.unknown()),
   lang: z.enum(["en", "ta"]).optional(),
 });
@@ -62,6 +66,36 @@ export async function POST(req: Request) {
       enforceRateLimit(`ai:exec:${user.id}`, 30, 60_000);
       const m = await executeScheduleMeeting(user.id, { companyId: String(p.companyId), title: p.title as string | null, scheduledAt: String(p.scheduledAt) });
       return { say: ta ? `${m.company} உடன் கூட்டம் நிர்ணயிக்கப்பட்டது.` : `Meeting with ${m.company} scheduled.`, href: "/meetings", label: "Open Meetings" };
+    }
+
+    if (action === "assign_task") {
+      const user = await requireUser("hr.manage");
+      enforceRateLimit(`ai:exec:${user.id}`, 30, 60_000);
+      const due = p.dueDate ? parseISTDate(String(p.dueDate)) : null;
+      await assignTask(user.id, String(p.employeeId), { title: String(p.title ?? ""), dueDate: due, priority: p.priority as string | null });
+      return { say: ta ? `${p.employeeName} க்கு பணி ஒதுக்கப்பட்டது.` : `Task assigned to ${p.employeeName}.`, href: "/team", label: "Open Team" };
+    }
+
+    if (action === "review_leave") {
+      const user = await requireUser("hr.manage");
+      enforceRateLimit(`ai:exec:${user.id}`, 30, 60_000);
+      const status = String(p.decision) === "APPROVED" ? "APPROVED" : "REJECTED";
+      await reviewLeave(String(p.leaveId), user.id, status);
+      return { say: ta ? `${p.employeeName} இன் விடுப்பு ${status === "APPROVED" ? "அனுமதிக்கப்பட்டது" : "நிராகரிக்கப்பட்டது"}.` : `${p.employeeName}'s leave ${status === "APPROVED" ? "approved" : "rejected"}.`, href: "/team", label: "Open Team" };
+    }
+
+    if (action === "post_chat") {
+      const user = await requireUser();
+      enforceRateLimit(`ai:exec:${user.id}`, 30, 60_000);
+      await sendMessage(user.id, String(p.message ?? ""));
+      return { say: ta ? `டீம் சாட்டில் இடப்பட்டது.` : `Posted to Team Chat.`, href: "/team", label: "Open Team" };
+    }
+
+    if (action === "announce") {
+      const user = await requireUser("hr.manage");
+      enforceRateLimit(`ai:exec:${user.id}`, 20, 60_000);
+      await createAnnouncement(user.id, { title: String(p.title ?? "Announcement"), body: String(p.body ?? "") });
+      return { say: ta ? `அறிவிப்பு வெளியிடப்பட்டது.` : `Announcement published.`, href: "/team", label: "Open Team" };
     }
 
     // create_followup

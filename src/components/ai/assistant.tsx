@@ -19,7 +19,7 @@ import {
 } from "@/lib/speech";
 
 interface ConfirmAction {
-  action: "add_company" | "record_payment" | "create_task" | "create_note" | "schedule_meeting" | "create_followup";
+  action: "add_company" | "record_payment" | "create_task" | "create_note" | "schedule_meeting" | "create_followup" | "assign_task" | "review_leave" | "post_chat" | "announce";
   params: Record<string, unknown>;
   title: string;
 }

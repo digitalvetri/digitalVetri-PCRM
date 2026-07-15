@@ -101,6 +101,10 @@ export type VoiceIntent =
   | "create_note"
   | "schedule_meeting"
   | "create_followup"
+  | "assign_task"
+  | "review_leave"
+  | "post_chat"
+  | "announce"
   | "answer";
 
 export interface VoiceResult {
@@ -120,12 +124,15 @@ export interface VoiceResult {
   dueDate?: string | null; // yyyy-MM-dd
   priority?: string | null;
   channel?: string | null;
+  employee?: string | null; // employee name for HR actions
+  decision?: string | null; // approve | reject
+  message?: string | null; // team-chat / announcement body
   reply: string;
 }
 
 const voiceSchema = z.object({
   intent: z
-    .enum(["navigate", "add_company", "record_payment", "create_task", "create_note", "schedule_meeting", "create_followup", "answer"])
+    .enum(["navigate", "add_company", "record_payment", "create_task", "create_note", "schedule_meeting", "create_followup", "assign_task", "review_leave", "post_chat", "announce", "answer"])
     .catch("answer"),
   destination: z.string().nullable().catch(null),
   name: z.string().nullable().catch(null),
@@ -142,6 +149,9 @@ const voiceSchema = z.object({
   dueDate: z.string().nullable().catch(null),
   priority: z.string().nullable().catch(null),
   channel: z.string().nullable().catch(null),
+  employee: z.string().nullable().catch(null),
+  decision: z.string().nullable().catch(null),
+  message: z.string().nullable().catch(null),
   reply: z.string().catch(""),
 });
 
@@ -158,7 +168,8 @@ export interface ChatTurn {
 export async function interpretVoice(
   message: string,
   lang: AssistantLang = "en",
-  history: ChatTurn[] = []
+  history: ChatTurn[] = [],
+  hr?: unknown // team/HR snapshot — only passed for admins/managers
 ): Promise<VoiceResult> {
   const [snapshot, deptReports] = await Promise.all([getCommandCenterSnapshot(), getLatestDeptReports()]);
   const funnel = targetFunnel(snapshot.monthlyTarget, snapshot.revenueClosedThisMonth);
@@ -168,6 +179,16 @@ export async function interpretVoice(
       ? "Write 'reply' in natural, spoken Tamil (தமிழ்) — like a real person talking, not a stiff translation."
       : "Write 'reply' in natural, warm, spoken English.";
   const convo = history.slice(-6).map((t) => `${t.role === "user" ? "Boss" : "Vetri"}: ${t.content}`).join("\n");
+  const hrBlock = hr
+    ? `\nYour team / HR right now (real data — you manage these people): ${JSON.stringify(hr)}\n`
+    : "";
+  const hrIntents = hr
+    ? `
+- "assign_task": assign a task to an EMPLOYEE. Extract "employee" (their name), "title" (the task), optional "dueDate", optional "priority".
+- "review_leave": approve or reject an employee's pending leave. Extract "employee" (name) and "decision" ("approve" or "reject").
+- "post_chat": post a message to the company Team Chat. Extract "message" (the text).
+- "announce": make a company announcement. Extract "title" and "message" (the body).`
+    : "";
   return generateJSON<VoiceResult>(
     `You are Vetri — the founder's AI CEO and right hand. You are sharp, warm and human: you talk like a trusted chief-of-staff who knows the business cold, NOT like a robot reading a report. Natural sentences. Only make a list when the boss asks for steps. Follow the conversation so it flows.
 
@@ -179,18 +200,18 @@ Decide the intent:
 - "navigate": they want to OPEN a screen. Set "destination" to ONE of: dashboard, command-center, ai-company, companies, prospects, meetings, proposals, follow-ups, tasks, calendar, reports, team, settings.
 - "add_company": adding a new client. Extract "name" + any industry/city/state/phone/email/website.
 - "record_payment": a payment received. Extract "company" and "amount" (rupee number; convert spoken words). Optional "note".
-- "create_task": create a to-do / reminder for the boss. Extract "title" (the task), optional "dueDate", optional "priority" (URGENT/HIGH/MEDIUM/LOW).
+- "create_task": create a to-do / reminder for the boss (assigned to themselves). Extract "title", optional "dueDate", optional "priority" (URGENT/HIGH/MEDIUM/LOW).
 - "create_note": add a note about a client. Extract "company" and "note" (the note text).
 - "schedule_meeting": book a meeting with a client. Extract "company", optional "title", and "dueDate" (the meeting date).
-- "create_followup": set a follow-up/reminder for a client's deal. Extract "company", "dueDate", optional "channel" (CALL/EMAIL/WHATSAPP/MEETING), optional "note".
-- "answer": a question, chit-chat or follow-up. Put a genuine, conversational answer in "reply".
+- "create_followup": set a follow-up/reminder for a client's deal. Extract "company", "dueDate", optional "channel" (CALL/EMAIL/WHATSAPP/MEETING), optional "note".${hrIntents}
+- "answer": a question, chit-chat or follow-up (INCLUDING questions about the team/employees — "how's my team", "who's absent", "report on X"). Put a genuine, conversational answer in "reply", grounded in the data below.
 
 Live data: ${JSON.stringify(snapshot)}
 Target math: ${JSON.stringify(funnel ?? "no target set")}
-Team reports: ${JSON.stringify(teamReports)}
+Team reports: ${JSON.stringify(teamReports)}${hrBlock}
 
-For any action intent, "reply" is a short natural spoken confirmation. For "answer", "reply" is specific and grounded in the data above, usually 2-5 sentences — and it's fine to ask a clarifying question back if a smart human would. ${langLine} Only extract fields clearly stated; use null otherwise.`,
-    `{ "intent": "navigate"|"add_company"|"record_payment"|"create_task"|"create_note"|"schedule_meeting"|"create_followup"|"answer", "destination": string|null, "name": string|null, "company": string|null, "amount": number|null, "industry": string|null, "city": string|null, "state": string|null, "phone": string|null, "email": string|null, "website": string|null, "note": string|null, "title": string|null, "dueDate": string|null, "priority": string|null, "channel": string|null, "reply": string }`,
+For any action intent, "reply" is a short natural spoken confirmation. For "answer", "reply" is specific and grounded in the data above, usually 2-5 sentences — and it's fine to ask a clarifying question back if a smart human would. ${langLine} Only extract fields clearly stated; use null otherwise. Distinguish "create_task" (a to-do for the boss) from "assign_task" (giving work to a named employee).`,
+    `{ "intent": "navigate"|"add_company"|"record_payment"|"create_task"|"create_note"|"schedule_meeting"|"create_followup"|"assign_task"|"review_leave"|"post_chat"|"announce"|"answer", "destination": string|null, "name": string|null, "company": string|null, "amount": number|null, "industry": string|null, "city": string|null, "state": string|null, "phone": string|null, "email": string|null, "website": string|null, "note": string|null, "title": string|null, "dueDate": string|null, "priority": string|null, "channel": string|null, "employee": string|null, "decision": string|null, "message": string|null, "reply": string }`,
     { temperature: 0.45, maxTokens: 1100 },
     voiceSchema
   );
@@ -201,7 +222,7 @@ For any action intent, "reply" is a short natural spoken confirmation. For "answ
  * classification round-trip — straight to a grounded answer). Answers in the
  * requested language.
  */
-export async function answerAsCeo(question: string, lang: AssistantLang = "en"): Promise<string> {
+export async function answerAsCeo(question: string, lang: AssistantLang = "en", hr?: unknown): Promise<string> {
   const [snapshot, deptReports] = await Promise.all([
     getCommandCenterSnapshot(),
     getLatestDeptReports(),
@@ -216,13 +237,14 @@ export async function answerAsCeo(question: string, lang: AssistantLang = "en"):
     lang === "ta"
       ? "REPLY ENTIRELY IN TAMIL (தமிழ்) using Tamil script. Keep money like ₹5,00,000 and company names as-is. Sound natural and spoken, like talking to the boss."
       : "Reply in clear, confident English.";
+  const hrBlock = hr ? `\n\nYour team / HR right now (real data — the people you manage):\n${JSON.stringify(hr)}` : "";
   return generateText(
-    `Live business snapshot (real data):\n${JSON.stringify(snapshot)}\n\nTarget → activity math (what it takes to hit the monthly target, if set):\n${JSON.stringify(funnel ?? "no target set")}\n\nYour department heads' latest reports:\n${JSON.stringify(teamReports)}\n\nThe boss asks: "${question}"\n\nAnswer as Vetri — the founder's AI CEO. Direct, specific, revenue-first, grounded in the real data above. If they ask HOW TO REACH a revenue number, give the concrete leads→meetings→proposals→deals math and name specific prospects. End with a short numbered action plan (2-4 steps). ${languageLine} Keep it under 180 words.`,
+    `Live business snapshot (real data):\n${JSON.stringify(snapshot)}\n\nTarget → activity math (what it takes to hit the monthly target, if set):\n${JSON.stringify(funnel ?? "no target set")}\n\nYour department heads' latest reports:\n${JSON.stringify(teamReports)}${hrBlock}\n\nThe boss asks: "${question}"\n\nAnswer as Vetri — the founder's AI CEO. Direct, specific, grounded in the real data above. For revenue questions, give the concrete leads→meetings→proposals→deals math and name specific prospects. For TEAM/employee questions, answer from the HR data — who's present/absent, workloads, overdue tasks, risks, and name specific people. End with a short numbered action plan (2-4 steps). ${languageLine} Keep it under 200 words.`,
     { system: CEO_OS_SYSTEM, temperature: 0.5 }
   );
 }
 
-export async function askAssistant(question: string, lang: AssistantLang = "en"): Promise<AssistantResult> {
+export async function askAssistant(question: string, lang: AssistantLang = "en", hr?: unknown): Promise<AssistantResult> {
   const plan = await generateJSON<AssistantPlan>(
     `Classify this sales-assistant question into an intent and extract filters. Question: "${question}"`,
     PLAN_SCHEMA,
@@ -248,7 +270,7 @@ export async function askAssistant(question: string, lang: AssistantLang = "en")
     default: {
       // Open-ended questions get the full CEO OS persona, grounded in the live
       // snapshot + department reports + target→activity math (see answerAsCeo).
-      const answer = await answerAsCeo(question, lang);
+      const answer = await answerAsCeo(question, lang, hr);
       return {
         answer,
         action: { type: "navigate", href: "/command-center", label: "Open Command Center" },
