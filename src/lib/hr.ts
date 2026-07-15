@@ -66,6 +66,31 @@ export async function toggleEmployeeTask(userId: string, taskId: string) {
   });
 }
 
+/** Employee sets the status of one of THEIR OWN tasks (TODO / IN_PROGRESS / DONE). */
+export async function setEmployeeTaskStatus(userId: string, taskId: string, status: "TODO" | "IN_PROGRESS" | "DONE") {
+  const t = await prisma.task.findFirst({ where: { id: taskId, assignedToId: userId }, select: { id: true } });
+  if (!t) throw new ApiError(404, "Task not found.");
+  return prisma.task.update({
+    where: { id: taskId },
+    data: { status, completedAt: status === "DONE" ? new Date() : null },
+  });
+}
+
+/** Employee adds a personal to-do for themselves. */
+export async function createSelfTask(userId: string, input: { title: string; dueDate?: Date | null; priority?: string | null }) {
+  if (!input.title?.trim()) throw new ApiError(400, "A task needs a title.");
+  const pr = (input.priority ?? "").toUpperCase();
+  return prisma.task.create({
+    data: {
+      title: input.title.trim(),
+      createdById: userId,
+      assignedToId: userId,
+      dueDate: input.dueDate ?? undefined,
+      priority: pr === "URGENT" || pr === "HIGH" || pr === "LOW" ? (pr as "URGENT" | "HIGH" | "LOW") : "MEDIUM",
+    },
+  });
+}
+
 export async function checkIn(userId: string) {
   const date = istStartOfDay();
   const existing = await prisma.attendance.findUnique({ where: { userId_date: { userId, date } } });
