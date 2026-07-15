@@ -11,6 +11,7 @@ import {
   BookOpen,
   Briefcase,
   CalendarDays,
+  CalendarRange,
   CheckCircle2,
   Circle,
   CircleDot,
@@ -116,7 +117,7 @@ const QUOTES = [
   "Done is better than perfect — then make it better.",
 ];
 
-type TabKey = "dashboard" | "tasks" | "timesheet" | "attendance" | "projects" | "goals" | "knowledge" | "chat" | "leave" | "payslips" | "reviews" | "reports" | "settings";
+type TabKey = "dashboard" | "assistant" | "tasks" | "timesheet" | "calendar" | "attendance" | "projects" | "goals" | "knowledge" | "chat" | "leave" | "payslips" | "reviews" | "reports" | "settings";
 
 export function EmployeePortal({ name, email, data }: { name: string; email: string; data: Data }) {
   const router = useRouter();
@@ -170,8 +171,10 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
   const activeGoals = data.goals.filter((g) => g.status === "ACTIVE").length;
   const nav: { key: TabKey; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+    { key: "assistant", label: "Ask Vetri", icon: <Sparkles className="h-4 w-4" /> },
     { key: "tasks", label: "My Tasks", icon: <ListChecks className="h-4 w-4" />, badge: openCount || undefined },
     { key: "timesheet", label: "Timesheet", icon: <Timer className="h-4 w-4" /> },
+    { key: "calendar", label: "Calendar", icon: <CalendarRange className="h-4 w-4" /> },
     { key: "attendance", label: "Attendance", icon: <CalendarDays className="h-4 w-4" /> },
     { key: "projects", label: "Projects", icon: <Briefcase className="h-4 w-4" />, badge: data.assignments.length || undefined },
     { key: "goals", label: "Goals", icon: <Target className="h-4 w-4" />, badge: activeGoals || undefined },
@@ -295,6 +298,13 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           />
         )}
 
+        {tab === "assistant" && (
+          <>
+            <PageTitle icon={<Sparkles className="h-5 w-5" />} title="Ask Vetri" subtitle="Your AI assistant — ask about your tasks, leave, hours and more." />
+            <AssistantTab first={first} />
+          </>
+        )}
+
         {tab === "tasks" && (
           <>
             <PageTitle icon={<ListChecks className="h-5 w-5" />} title="My Tasks" subtitle="Everything on your plate, in one place." />
@@ -306,6 +316,13 @@ export function EmployeePortal({ name, email, data }: { name: string; email: str
           <>
             <PageTitle icon={<Timer className="h-5 w-5" />} title="Timesheet" subtitle="Log your hours by day and project." />
             <TimesheetTab entries={data.timesheet} assignments={data.assignments} post={post} onChange={() => router.refresh()} />
+          </>
+        )}
+
+        {tab === "calendar" && (
+          <>
+            <PageTitle icon={<CalendarRange className="h-5 w-5" />} title="Calendar" subtitle="Tasks, leave and holidays in one view." />
+            <CalendarTab data={data} onGoTo={setTab} />
           </>
         )}
 
@@ -1569,6 +1586,192 @@ function ReportsTab({ data }: { data: Data }) {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------
+// Ask Vetri — scoped AI assistant
+// ---------------------------------------------------------------
+
+const VETRI_SUGGESTIONS = [
+  "What are my tasks today?",
+  "How much leave do I have left?",
+  "How many hours did I log this week?",
+  "What projects am I on?",
+  "When is the next holiday?",
+];
+
+function AssistantTab({ first }: { first: string }) {
+  const [messages, setMessages] = React.useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [input, setInput] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [messages, busy]);
+
+  async function ask(q: string) {
+    if (!q.trim() || busy) return;
+    const history = messages.slice(-6);
+    setMessages((m) => [...m, { role: "user", content: q }]);
+    setInput("");
+    setBusy(true);
+    try {
+      const res = await fetch("/api/me/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, history }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed");
+      setMessages((m) => [...m, { role: "assistant", content: json.answer }]);
+    } catch (err) {
+      setMessages((m) => [...m, { role: "assistant", content: `Sorry, I couldn't answer that right now. ${err instanceof Error ? err.message : ""}` }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="flex h-[65vh] flex-col overflow-hidden shadow-card">
+      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
+        {messages.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-500 text-white shadow-lg shadow-primary/30"><Sparkles className="h-7 w-7" /></span>
+            <p className="mt-3 font-semibold">Hi {first}, I&apos;m Vetri.</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">Ask me anything about your workspace — I can only see your own data.</p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {VETRI_SUGGESTIONS.map((s) => (
+                <button key={s} onClick={() => ask(s)} className="rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">{s}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={cn("flex gap-2.5", m.role === "user" ? "justify-end" : "justify-start")}>
+            {m.role === "assistant" && <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-blue-500 text-white"><Sparkles className="h-3.5 w-3.5" /></span>}
+            <div className={cn("max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm", m.role === "user" ? "bg-primary text-white" : "border bg-muted/40")}>{m.content}</div>
+          </div>
+        ))}
+        {busy && (
+          <div className="flex gap-2.5">
+            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-blue-500 text-white"><Sparkles className="h-3.5 w-3.5" /></span>
+            <div className="rounded-2xl border bg-muted/40 px-3.5 py-2.5"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+          </div>
+        )}
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); ask(input); }} className="flex items-center gap-2 border-t p-3">
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Vetri…" className="h-10 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus:border-primary" />
+        <Button type="submit" size="sm" disabled={busy || !input.trim()} className="h-10">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}</Button>
+      </form>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------
+// Personal calendar (tasks + leave + holidays)
+// ---------------------------------------------------------------
+
+function sameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function CalendarTab({ data, onGoTo }: { data: Data; onGoTo: (t: TabKey) => void }) {
+  const [cursor, setCursor] = React.useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const today = new Date();
+  const [selected, setSelected] = React.useState<number | null>(today.getDate());
+
+  const first = new Date(cursor.y, cursor.m, 1).getDay();
+  const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
+
+  // Build per-day event buckets.
+  const inLeave = (d: Date) => data.leaves.find((l) => { const s = new Date(l.startDate); const e = new Date(l.endDate); s.setHours(0,0,0,0); e.setHours(23,59,59,999); return d >= s && d <= e; });
+  const dayTasks = (d: Date) => data.tasks.filter((t) => t.dueDate && sameDay(new Date(t.dueDate), d) && t.status !== "DONE");
+  const dayHoliday = (d: Date) => data.holidays.find((h) => sameDay(new Date(h.date), d));
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < first; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const selDate = selected != null ? new Date(cursor.y, cursor.m, selected) : null;
+  const selTasks = selDate ? dayTasks(selDate) : [];
+  const selHoliday = selDate ? dayHoliday(selDate) : undefined;
+  const selLeave = selDate ? inLeave(selDate) : undefined;
+
+  function shift(delta: number) {
+    setSelected(null);
+    setCursor((c) => { const m = c.m + delta; return { y: c.y + Math.floor(m / 12), m: ((m % 12) + 12) % 12 }; });
+  }
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
+      <Card className="shadow-card">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">{new Date(cursor.y, cursor.m, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</CardTitle>
+            <div className="flex gap-1">
+              <button onClick={() => shift(-1)} className="rounded-md border p-1 text-muted-foreground hover:bg-muted"><ChevronLeft className="h-4 w-4" /></button>
+              <button onClick={() => shift(1)} className="rounded-md border p-1 text-muted-foreground hover:bg-muted"><ChevronRight className="h-4 w-4" /></button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium uppercase text-muted-foreground">
+            {["S","M","T","W","T","F","S"].map((d, i) => <div key={i} className="py-1">{d}</div>)}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {cells.map((d, i) => {
+              if (d === null) return <div key={i} />;
+              const date = new Date(cursor.y, cursor.m, d);
+              const isToday = sameDay(date, today);
+              const isSel = selected === d;
+              const tks = dayTasks(date);
+              const hol = dayHoliday(date);
+              const lv = inLeave(date);
+              return (
+                <button
+                  key={i}
+                  onClick={() => setSelected(d)}
+                  className={cn(
+                    "flex aspect-square flex-col items-center justify-center rounded-lg text-xs transition-colors",
+                    isSel ? "bg-primary text-white shadow-sm" : "hover:bg-muted",
+                    !isSel && isToday && "ring-1 ring-primary",
+                  )}
+                >
+                  <span className={cn(isToday && !isSel && "font-bold text-primary")}>{d}</span>
+                  <span className="mt-0.5 flex h-1.5 items-center gap-0.5">
+                    {tks.length > 0 && <span className={cn("h-1.5 w-1.5 rounded-full", isSel ? "bg-white" : "bg-amber-500")} />}
+                    {hol && <span className={cn("h-1.5 w-1.5 rounded-full", isSel ? "bg-white" : "bg-violet-500")} />}
+                    {lv && <span className={cn("h-1.5 w-1.5 rounded-full", isSel ? "bg-white" : "bg-blue-500")} />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+            <Legend color="bg-amber-500" label="Task due" />
+            <Legend color="bg-blue-500" label="Leave" />
+            <Legend color="bg-violet-500" label="Holiday" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-card">
+        <CardHeader className="pb-3"><CardTitle className="text-base">{selDate ? selDate.toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "short" }) : "Select a day"}</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {selHoliday && <div className="rounded-lg bg-violet-500/10 px-3 py-2 text-sm text-violet-700">🎉 {selHoliday.name} — company holiday</div>}
+          {selLeave && <div className="rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-700">✈️ {selLeave.type} leave ({selLeave.status.toLowerCase()})</div>}
+          {selTasks.length > 0 ? (
+            <ul className="space-y-2">
+              {selTasks.map((t) => (
+                <li key={t.id} className="flex items-center gap-2 rounded-lg border p-2.5 text-sm">
+                  <span className={cn("h-2 w-2 shrink-0 rounded-full", t.priority === "URGENT" || t.priority === "HIGH" ? "bg-red-500" : "bg-amber-500")} />
+                  <span className="flex-1">{t.title}</span>
+                  {t.priority !== "MEDIUM" && <Badge variant="outline" className={cn("text-[10px]", PRIORITY_TONE[t.priority])}>{t.priority}</Badge>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            !selHoliday && !selLeave && <p className="py-6 text-center text-sm text-muted-foreground">Nothing scheduled. <button onClick={() => onGoTo("tasks")} className="font-medium text-primary hover:underline">Add a task →</button></p>
+          )}
         </CardContent>
       </Card>
     </div>
