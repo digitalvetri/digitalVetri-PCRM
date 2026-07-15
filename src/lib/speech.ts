@@ -136,24 +136,35 @@ export async function speakViaServer(text: string, lang: "en" | "ta" = "en"): Pr
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     currentAudio = audio;
-    const done = () => {
-      URL.revokeObjectURL(url);
-      if (currentAudio === audio) clearAudio();
-    };
-    audio.onended = done;
-    audio.onerror = done;
-    // Failsafe: clear the flag shortly after the audio's real duration (or a hard
-    // 25s cap) so it can never stick and leave Vetri deaf.
-    audio.onloadedmetadata = () => {
-      const d = audio.duration;
-      const ms = Number.isFinite(d) && d > 0 ? d * 1000 + 1200 : 25000;
-      if (speakingFailsafe) clearTimeout(speakingFailsafe);
-      speakingFailsafe = setTimeout(() => {
+
+    // Resolve only when playback truly FINISHES (or errors / the failsafe fires) —
+    // NOT when it merely starts. Resolving early let the conversation-mode
+    // re-listen cancel Vetri mid-sentence ("says the first word then listens").
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (val: boolean) => {
+        if (settled) return;
+        settled = true;
+        URL.revokeObjectURL(url);
         if (currentAudio === audio) clearAudio();
-      }, ms);
-    };
-    await audio.play();
-    return true;
+        resolve(val);
+      };
+      audio.onended = () => finish(true);
+      // A mid-playback error: we already have server audio, so treat as done
+      // (don't fall back to the browser engine and double-speak).
+      audio.onerror = () => finish(true);
+      // Failsafe backstop: some concatenated MP3s never fire `ended`. Wait the
+      // audio's real duration + a buffer (or a generous cap when duration is
+      // unknown) so a long answer is NEVER cut short.
+      audio.onloadedmetadata = () => {
+        const d = audio.duration;
+        const ms = Number.isFinite(d) && d > 0 ? d * 1000 + 1500 : 45000;
+        if (speakingFailsafe) clearTimeout(speakingFailsafe);
+        speakingFailsafe = setTimeout(() => finish(true), ms);
+      };
+      // Only a failure to START playback should fall back to the browser engine.
+      audio.play().catch(() => finish(false));
+    });
   } catch {
     clearAudio();
     return false;
