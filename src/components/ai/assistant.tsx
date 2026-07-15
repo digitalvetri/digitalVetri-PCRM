@@ -19,7 +19,7 @@ import {
 } from "@/lib/speech";
 
 interface ConfirmAction {
-  action: "add_company" | "record_payment" | "create_task" | "create_note" | "schedule_meeting" | "create_followup" | "assign_task" | "review_leave" | "post_chat" | "announce";
+  action: "add_company" | "record_payment" | "create_task" | "create_note" | "schedule_meeting" | "create_followup" | "assign_task" | "review_leave" | "post_chat" | "announce" | "create_lead" | "create_prospect";
   params: Record<string, unknown>;
   title: string;
 }
@@ -106,24 +106,43 @@ function isMobileDevice(): boolean {
   return typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|Silk|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
-// --- Guided client onboarding (multi-turn: ask each detail, then save) ---
+// --- Guided creation (multi-turn: ask each detail, then save) ---
+type OnboardType = "client" | "lead" | "prospect";
 interface OnboardStep {
-  key: "name" | "industry" | "city" | "phone" | "email";
+  key: "name" | "industry" | "city" | "phone" | "email" | "website" | "company" | "value";
   q: { en: string; ta: string };
   required?: boolean;
 }
-const ONBOARD_STEPS: OnboardStep[] = [
-  { key: "name", required: true, q: { en: "Great — a new client! What's the company's name?", ta: "நல்லது — புதிய வாடிக்கையாளர்! நிறுவனத்தின் பெயர் என்ன?" } },
-  { key: "industry", q: { en: "What industry are they in? (say “skip” if unknown)", ta: "எந்தத் துறை? (தெரியாவிட்டால் “skip” சொல்லுங்கள்)" } },
-  { key: "city", q: { en: "Which city are they in? (or skip)", ta: "எந்த நகரம்? (அல்லது skip)" } },
-  { key: "phone", q: { en: "Their phone number? (or skip)", ta: "தொலைபேசி எண்? (அல்லது skip)" } },
-  { key: "email", q: { en: "Their email? (or skip)", ta: "மின்னஞ்சல்? (அல்லது skip)" } },
-];
-function isOnboardingTrigger(text: string): boolean {
+const Q = {
+  name: { en: "What's the company's name?", ta: "நிறுவனத்தின் பெயர் என்ன?" },
+  industry: { en: "What industry are they in? (or say “skip”)", ta: "எந்தத் துறை? (அல்லது “skip”)" },
+  city: { en: "Which city? (or skip)", ta: "எந்த நகரம்? (அல்லது skip)" },
+  phone: { en: "Their phone number? (or skip)", ta: "தொலைபேசி எண்? (அல்லது skip)" },
+  email: { en: "Their email? (or skip)", ta: "மின்னஞ்சல்? (அல்லது skip)" },
+  website: { en: "Their website? (or skip)", ta: "இணையதளம்? (அல்லது skip)" },
+} as const;
+const ONBOARD_FLOWS: Record<OnboardType, OnboardStep[]> = {
+  client: [
+    { key: "name", required: true, q: { en: "Great — a new client! What's the company's name?", ta: "நல்லது — புதிய வாடிக்கையாளர்! நிறுவனத்தின் பெயர் என்ன?" } },
+    { key: "industry", q: Q.industry }, { key: "city", q: Q.city }, { key: "phone", q: Q.phone }, { key: "email", q: Q.email },
+  ],
+  lead: [
+    { key: "name", required: true, q: { en: "A new lead! What's their business name?", ta: "புதிய லீட்! வணிகத்தின் பெயர் என்ன?" } },
+    { key: "industry", q: Q.industry }, { key: "city", q: Q.city }, { key: "phone", q: Q.phone }, { key: "email", q: Q.email }, { key: "website", q: Q.website },
+  ],
+  prospect: [
+    { key: "company", required: true, q: { en: "A new deal! Which client is it for? (say the company name)", ta: "புதிய டீல்! எந்த வாடிக்கையாளருக்கு? (நிறுவனத்தின் பெயர்)" } },
+    { key: "value", q: { en: "What's the expected deal value in rupees? (or skip)", ta: "எதிர்பார்க்கும் மதிப்பு (₹)? (அல்லது skip)" } },
+  ],
+};
+function detectOnboard(text: string): OnboardType | null {
   const t = text.toLowerCase();
-  const hasClient = /(client|customer|company|வாடிக்கையாளர்|கிளையண்ட்|நிறுவனம்)/.test(t);
-  const hasNew = /(new|got|onboard|added|joined|signed|புதிய|கிடைத்த|சேர்)/.test(t);
-  return hasClient && hasNew;
+  const hasNew = /(new|got|onboard|add|added|create|joined|signed|புதிய|கிடைத்த|சேர்|உருவாக்)/.test(t);
+  if (!hasNew) return null;
+  if (/(prospect|deal|opportunity|டீல்|வாய்ப்பு)/.test(t)) return "prospect";
+  if (/(lead|லீட்)/.test(t)) return "lead";
+  if (/(client|customer|company|வாடிக்கையாளர்|கிளையண்ட்|நிறுவனம்)/.test(t)) return "client";
+  return null;
 }
 function isSkip(text: string): boolean {
   return /^(skip|no|none|na|nil|nothing|dont know|don't know|இல்லை|வேண்டாம்|தெரியாது)/i.test(text.trim());
@@ -175,6 +194,8 @@ export function AiAssistant() {
   // question (no need to say "Vetri" each turn). Desktop-only, opt-in.
   const [convoOn, setConvoOn] = React.useState(false);
   const convoRef = React.useRef(false);
+  const sessionConvoRef = React.useRef(false); // continuous convo after a voice wake, until the panel is closed
+  const voiceOnRef = React.useRef(false);
   const [interim, setInterim] = React.useState(""); // live caption of what you're saying
   const [lang, setLang] = React.useState<Lang>("en");
   const langRef = React.useRef<Lang>("en");
@@ -189,7 +210,7 @@ export function AiAssistant() {
   const ignoreUntilRef = React.useRef(0); // ignore recognizer input while we speak
   const sendRef = React.useRef<(q: string, forceSpeak?: boolean) => void>(() => {});
   // Guided client-onboarding conversation state (which field we're collecting).
-  const onboardRef = React.useRef<{ step: number; data: Record<string, string> } | null>(null);
+  const onboardRef = React.useRef<{ type: OnboardType; step: number; data: Record<string, string> } | null>(null);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const panelInputRef = React.useRef<HTMLInputElement>(null);
@@ -233,6 +254,10 @@ export function AiAssistant() {
   React.useEffect(() => {
     langRef.current = lang;
   }, [lang]);
+
+  React.useEffect(() => {
+    voiceOnRef.current = voiceOn;
+  }, [voiceOn]);
 
   // Shared "arm" flow — both the wake word AND a clap trigger this: Vetri
   // wakes, greets you as boss, and captures your question.
@@ -310,19 +335,29 @@ export function AiAssistant() {
   // greeting — the "Listening…" indicator is the feedback, and it auto-sends
   // what you say. Toggling while listening stops it.
   const arm = React.useCallback(
-    (initial: string) => {
+    (initial: string, opts?: { greet?: boolean; session?: boolean }) => {
       if (armedRef.current) return;
       cancelSpeech();
       armedRef.current = true;
       setArmed(true);
       setOpen(true);
+      // A voice wake (word/clap/Talk button) begins a continuous session — Vetri
+      // keeps the conversation going after each reply until the panel is closed.
+      if (opts?.session) sessionConvoRef.current = true;
       questionBufRef.current = initial;
       ignoreUntilRef.current = 0;
+      // Greet like a person when woken with no trailing question ("Vetri" on its
+      // own, or a clap): a short spoken "Yes boss?" then listen.
+      if (opts?.greet && !initial.trim() && voiceOnRef.current) {
+        ignoreUntilRef.current = Date.now() + 1400;
+        void speakSmart(langRef.current === "ta" ? "சொல்லுங்க பாஸ்." : "Yes boss?", langRef.current);
+      }
       // The always-on wake recognizer already feeds the buffer; only spin up a
       // capture recognizer when it isn't running (tap / clap activation).
       if (!wakeOnRef.current) startCapture();
       if (armExpiryRef.current) clearTimeout(armExpiryRef.current);
-      armExpiryRef.current = setTimeout(disarm, 15000);
+      // Longer window in a live session so Vetri waits patiently for you.
+      armExpiryRef.current = setTimeout(disarm, opts?.session ? 30000 : 15000);
     },
     [disarm, startCapture]
   );
@@ -362,8 +397,8 @@ export function AiAssistant() {
           else interim += r[0].transcript;
         }
         if (!armedRef.current) {
-          if (containsWakeWord(finalText)) arm(stripWakeWord(finalText));
-          else if (containsWakeWord(interim)) arm(stripWakeWord(interim));
+          if (containsWakeWord(finalText)) arm(stripWakeWord(finalText), { greet: true, session: true });
+          else if (containsWakeWord(interim)) arm(stripWakeWord(interim), { greet: true, session: true });
           return;
         }
         if (finalText) {
@@ -485,7 +520,7 @@ export function AiAssistant() {
             if (firstClapAt && now - firstClapAt < 700 && now - firstClapAt > 120) {
               firstClapAt = 0;
               clapCooldownUntil = now + 4000; // don't listen again for 4s
-              arm("");
+              arm("", { greet: true, session: true });
             } else {
               firstClapAt = now;
             }
@@ -512,7 +547,7 @@ export function AiAssistant() {
   React.useEffect(() => {
     const onTalk = () => {
       setOpen(true);
-      arm("");
+      arm("", { greet: true, session: true });
     };
     const onOpen = () => setOpen(true);
     window.addEventListener("vetri:talk", onTalk);
@@ -666,9 +701,10 @@ export function AiAssistant() {
   }
 
   function sayOut(text: string, force = false, listenAfter = false) {
+    // Continue the conversation if Conversation Mode is on OR we're mid live session.
+    const keepGoing = listenAfter && (convoRef.current || sessionConvoRef.current) && !isMobileDevice();
     if (!(voiceOn || force)) {
-      // Voice muted but in Conversation Mode → still re-open the mic for the next turn.
-      if (listenAfter && convoRef.current && !isMobileDevice()) setTimeout(() => arm(""), 250);
+      if (keepGoing) setTimeout(() => arm(""), 250);
       return;
     }
     // Only bridge the short gap before the audio starts — isSpeaking() covers the
@@ -676,34 +712,45 @@ export function AiAssistant() {
     // (fixes "I call it 5 times and it wakes once" — it was staying deaf too long).
     ignoreUntilRef.current = Date.now() + 1200;
     void speakSmart(text, lang).finally(() => {
-      // Conversation Mode: the moment Vetri stops talking, listen for the reply —
-      // a natural back-and-forth without repeating the wake word each turn.
-      if (listenAfter && convoRef.current && !isMobileDevice() && !armedRef.current) {
-        setTimeout(() => arm(""), 300);
-      }
+      // The moment Vetri stops talking, listen for the reply — a natural
+      // back-and-forth without repeating the wake word each turn.
+      if (keepGoing && !armedRef.current) setTimeout(() => arm(""), 300);
     });
   }
 
-  // --- Guided client onboarding conversation ---
-  function askOnboardStep(i: number, force: boolean) {
-    const q = ONBOARD_STEPS[i].q[lang];
+  // --- Guided creation conversation (client / lead / prospect) ---
+  function askOnboardStep(type: OnboardType, i: number, force: boolean) {
+    const q = ONBOARD_FLOWS[type][i].q[lang];
     setMessages((m) => [...m, { role: "assistant", content: q }]);
-    sayOut(q, force);
+    sayOut(q, force, true);
   }
-  function startOnboarding(force: boolean) {
-    onboardRef.current = { step: 0, data: {} };
-    askOnboardStep(0, force);
+  function startOnboarding(type: OnboardType, force: boolean) {
+    onboardRef.current = { type, step: 0, data: {} };
+    askOnboardStep(type, 0, force);
   }
   function finishOnboarding(force: boolean) {
-    const data = onboardRef.current?.data ?? {};
+    const state = onboardRef.current;
+    if (!state) return;
+    const { type, data } = state;
     onboardRef.current = null;
-    const name = (data.name ?? "").trim();
-    const where = data.city ? (lang === "ta" ? ` (${data.city})` : ` in ${data.city}`) : "";
-    const say = lang === "ta" ? `${name}${where} ஐ கிளையண்ட்டாக சேமிக்கவா? சேமிக்க தட்டவும்.` : `Save ${name}${where} as a client? Tap Save.`;
-    setMessages((m) => [
-      ...m,
-      { role: "assistant", content: say, confirm: { action: "add_company", params: { name, industry: data.industry || null, city: data.city || null, phone: data.phone || null, email: data.email || null }, title: name } },
-    ]);
+    let confirm: ConfirmAction;
+    let say: string;
+    if (type === "client") {
+      const name = (data.name ?? "").trim();
+      const where = data.city ? (lang === "ta" ? ` (${data.city})` : ` in ${data.city}`) : "";
+      say = lang === "ta" ? `${name}${where} ஐ கிளையண்ட்டாக சேமிக்கவா? சேமிக்க தட்டவும்.` : `Save ${name}${where} as a client? Tap Save.`;
+      confirm = { action: "add_company", params: { name, industry: data.industry || null, city: data.city || null, phone: data.phone || null, email: data.email || null }, title: name };
+    } else if (type === "lead") {
+      const name = (data.name ?? "").trim();
+      say = lang === "ta" ? `${name} ஐ லீட்டாக சேர்க்கவா? சேமிக்க தட்டவும்.` : `Add ${name} as a lead? Tap Save.`;
+      confirm = { action: "create_lead", params: { name, industry: data.industry || null, city: data.city || null, phone: data.phone || null, email: data.email || null, website: data.website || null }, title: name };
+    } else {
+      const company = (data.company ?? "").trim();
+      const val = Number((data.value ?? "").replace(/[^\d.]/g, "")) || null;
+      say = lang === "ta" ? `${company} க்கு புதிய டீல் உருவாக்கவா? சேமிக்க தட்டவும்.` : `Create a new deal for ${company}? Tap Save.`;
+      confirm = { action: "create_prospect", params: { companyName: company, proposalValue: val }, title: company };
+    }
+    setMessages((m) => [...m, { role: "assistant", content: say, confirm }]);
     sayOut(say, force);
   }
   function handleOnboardAnswer(ans: string, force: boolean) {
@@ -716,15 +763,16 @@ export function AiAssistant() {
       sayOut(msg, force);
       return;
     }
-    const step = ONBOARD_STEPS[state.step];
+    const flow = ONBOARD_FLOWS[state.type];
+    const step = flow[state.step];
     const skip = isSkip(ans);
     if (step.required && (skip || !ans.trim())) {
-      askOnboardStep(state.step, force); // required field — re-ask
+      askOnboardStep(state.type, state.step, force); // required field — re-ask
       return;
     }
     state.data[step.key] = skip ? "" : ans.trim();
     state.step += 1;
-    if (state.step < ONBOARD_STEPS.length) askOnboardStep(state.step, force);
+    if (state.step < flow.length) askOnboardStep(state.type, state.step, force);
     else finishOnboarding(force);
   }
 
@@ -740,8 +788,9 @@ export function AiAssistant() {
       handleOnboardAnswer(question, forceSpeak);
       return;
     }
-    if (isOnboardingTrigger(question)) {
-      startOnboarding(forceSpeak);
+    const onboardType = detectOnboard(question);
+    if (onboardType) {
+      startOnboarding(onboardType, forceSpeak);
       return;
     }
 
@@ -946,6 +995,8 @@ export function AiAssistant() {
               <button
                 onClick={() => {
                   cancelSpeech();
+                  sessionConvoRef.current = false;
+                  disarm();
                   setOpen(false);
                 }}
                 title="Close"

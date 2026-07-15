@@ -3,7 +3,7 @@ import { withApi } from "@/lib/api";
 import { requireUser } from "@/lib/rbac";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { executeAddCompany, executeRecordPayment } from "@/lib/ai/command";
-import { executeCreateTask, executeCreateNote, executeScheduleMeeting, executeCreateFollowup } from "@/lib/ai/actions";
+import { executeCreateTask, executeCreateNote, executeScheduleMeeting, executeCreateFollowup, executeCreateLead, executeCreateProspect } from "@/lib/ai/actions";
 import { assignTask, reviewLeave } from "@/lib/hr";
 import { sendMessage } from "@/lib/chat";
 import { createAnnouncement } from "@/lib/announcements";
@@ -11,7 +11,7 @@ import { parseISTDate } from "@/lib/time";
 import { formatINR } from "@/lib/utils";
 
 const schema = z.object({
-  action: z.enum(["add_company", "record_payment", "create_task", "create_note", "schedule_meeting", "create_followup", "assign_task", "review_leave", "post_chat", "announce"]),
+  action: z.enum(["add_company", "record_payment", "create_task", "create_note", "schedule_meeting", "create_followup", "assign_task", "review_leave", "post_chat", "announce", "create_lead", "create_prospect"]),
   params: z.record(z.unknown()),
   lang: z.enum(["en", "ta"]).optional(),
 });
@@ -89,6 +89,20 @@ export async function POST(req: Request) {
       enforceRateLimit(`ai:exec:${user.id}`, 30, 60_000);
       await sendMessage(user.id, String(p.message ?? ""));
       return { say: ta ? `டீம் சாட்டில் இடப்பட்டது.` : `Posted to Team Chat.`, href: "/team", label: "Open Team" };
+    }
+
+    if (action === "create_lead") {
+      const user = await requireUser("companies.create");
+      enforceRateLimit(`ai:exec:${user.id}`, 30, 60_000);
+      const l = await executeCreateLead(user.id, { name: String(p.name ?? ""), industry: p.industry as string | null, city: p.city as string | null, state: p.state as string | null, phone: p.phone as string | null, email: p.email as string | null, website: p.website as string | null });
+      return { say: ta ? `${l.name} லீட் சேர்க்கப்பட்டது.` : `Lead “${l.name}” added.`, href: "/command-center", label: "Open Command Center" };
+    }
+
+    if (action === "create_prospect") {
+      const user = await requireUser("prospects.edit");
+      enforceRateLimit(`ai:exec:${user.id}`, 30, 60_000);
+      const pr = await executeCreateProspect(user.id, { companyName: String(p.companyName ?? p.company ?? ""), proposalValue: p.proposalValue != null ? Number(p.proposalValue) : null });
+      return { say: ta ? `${pr.company} க்கு புதிய டீல் (${pr.prospectId}) உருவாக்கப்பட்டது.` : `New deal ${pr.prospectId} created for ${pr.company}.`, href: "/prospects", label: "Open Prospects" };
     }
 
     if (action === "announce") {

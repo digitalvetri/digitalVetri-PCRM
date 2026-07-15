@@ -2,6 +2,7 @@ import type { Priority, FollowUpChannel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api-error";
 import { parseISTDate } from "@/lib/time";
+import { nextId } from "@/lib/counters";
 
 /**
  * Agentic tool executors — the things Vetri can DO in the app. Each is called
@@ -87,6 +88,43 @@ export async function executeScheduleMeeting(userId: string, p: { companyId: str
     data: { companyId: p.companyId, userId, title: p.title?.trim() || `Meeting with ${c.name}`, scheduledAt: when },
   });
   return { company: c.name };
+}
+
+/** Create a new discovered lead (MANUAL source) from a voice conversation. */
+export async function executeCreateLead(userId: string, p: { name: string; industry?: string | null; city?: string | null; state?: string | null; phone?: string | null; email?: string | null; website?: string | null }) {
+  if (!p.name?.trim()) throw new ApiError(400, "A lead needs a name.");
+  await prisma.discoveredLead.create({
+    data: {
+      name: p.name.trim(),
+      industry: p.industry?.trim() || undefined,
+      city: p.city?.trim() || undefined,
+      state: p.state?.trim() || undefined,
+      phone: p.phone?.trim() || undefined,
+      email: p.email?.trim() || undefined,
+      website: p.website?.trim() || undefined,
+      source: "MANUAL",
+      status: "NEW",
+      createdById: userId,
+    },
+  });
+  return { name: p.name.trim() };
+}
+
+/** Create a new prospect (deal) on an existing client, matched by name. */
+export async function executeCreateProspect(userId: string, p: { companyName: string; proposalValue?: number | null }) {
+  const company = await prisma.company.findFirst({ where: { name: { contains: p.companyName.trim(), mode: "insensitive" } }, select: { id: true, name: true } });
+  if (!company) throw new ApiError(404, `No client called "${p.companyName}". Add them as a client first.`);
+  const prospectId = await nextId("prospect", "DV-P");
+  await prisma.prospect.create({
+    data: {
+      prospectId,
+      companyId: company.id,
+      status: "NEW",
+      assignedToId: userId,
+      proposalValue: p.proposalValue && p.proposalValue > 0 ? p.proposalValue : undefined,
+    },
+  });
+  return { company: company.name, prospectId };
 }
 
 export async function executeCreateFollowup(userId: string, p: { prospectId: string; dueAt: string; channel?: string | null; notes?: string | null }) {
